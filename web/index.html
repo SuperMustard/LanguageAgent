@@ -270,9 +270,9 @@ async function startSession() {
     if (audioRes.ok) await playAudioBlob(await audioRes.blob());
 
     el.recordBtn.disabled = false;
-    el.endBtn.disabled = false;
+    el.endBtn.disabled = true;
     el.debriefPanel.style.display = 'none';
-    setStatus('演练中——按住麦克风按钮说话。');
+    setStatus('演练中——按住麦克风按钮说话。（说完至少一轮才能结束演练）');
   } catch (e) {
     showError('开始演练失败：' + e.message);
     setStatus('');
@@ -330,7 +330,8 @@ async function onRecordingStop() {
     addBubble('user', transcribed);
     addBubble('ai', reply);
     await playAudioBlob(await res.blob());
-    setStatus('演练中——按一下麦克风按钮继续。');
+    el.endBtn.disabled = false;
+    setStatus('演练中——按一下麦克风按钮继续，或结束演练。');
   } catch (e) {
     showError('语音回合失败：' + e.message);
     setStatus('');
