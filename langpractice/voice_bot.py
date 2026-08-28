@@ -36,6 +36,10 @@ from .config import (
     GROQ_API_KEY,
     GROQ_MODEL,
     GROQ_WHISPER_MODEL,
+    VAD_CONFIDENCE,
+    VAD_MIN_VOLUME,
+    VAD_START_SECS,
+    VAD_STOP_SECS,
 )
 from .llm.groq_client import GroqLLMClient
 from .personas import BUILTIN_SCENARIOS, PersonaCard, render_persona_prompt
@@ -45,9 +49,13 @@ load_dotenv(override=True)
 _VOICE_BY_LANGUAGE = {"en": "en-US-JennyNeural", "fr": "fr-FR-DeniseNeural"}
 _STT_LANGUAGE_BY_CODE = {"en": Language.EN, "fr": Language.FR}
 
-# VAD 默认 stop_secs=0.2（200ms 静音就判定"说完了"），对自然停顿/外语组句思考时间太短，
-# 容易在没说完时就被打断。调大到 0.8s——嫌反应慢可以再调小，嫌还是切太快可以再调大。
-_VAD_PARAMS = VADParams(stop_secs=0.8)
+# 调参走 .env（VAD_STOP_SECS 等，见 config.py），改完重启 voice_bot 就生效，不用改代码。
+_VAD_PARAMS = VADParams(
+    confidence=VAD_CONFIDENCE,
+    start_secs=VAD_START_SECS,
+    stop_secs=VAD_STOP_SECS,
+    min_volume=VAD_MIN_VOLUME,
+)
 
 # Pipecat 的 TTS 是流式拼接 LLM 输出念出来的，不像旧 REST 版能在发去 TTS 前用
 # tts_text.strip_for_speech() 整句过滤星号舞台指示。改成直接在 system prompt 里说清楚。
