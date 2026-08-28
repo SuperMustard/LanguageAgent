@@ -8,12 +8,23 @@
 语言口语演练 agent。用户母语中文，练英语和法语口语（诊所、面试等场景）。
 Agent 做口语演练 + 演练后诊断，把结果导出给 Anki 插件 langhelper 复习。
 
+## 当前进度
+
+- **task 01（文字版闭环）已完成并跑通**：角色卡对话 → "结束" → Debrief → 存 SQLite →
+  导出 langhelper 格式，用真实 Groq API 验证过（不只是 mock）。
+- **语音层已接上**：录音 → Groq Whisper STT → 复用同一套 `session.turn()` 角色扮演逻辑
+  （铁律不受影响）→ Azure TTS 念出回复。手动测试脚本见 `scripts/voice_test.py`。
+- 代码结构见 `langpractice/`：`llm/` `stt/` `tts/` 三层都是 Protocol 接口 + 具体实现，
+  没配对应 API key 时自动退回 Mock，不阻塞开发（`GROQ_API_KEY` 缺失时 LLM 退回
+  `MockLLMClient`、STT 端点直接 503；`AZURE_SPEECH_KEY` 缺失时 TTS 退回占位提示音）。
+- 已有两次 git commit：闭环+语音层、以及下面"实现踩坑记录"里的 TTS 舞台指示修复。
+
 ## 技术栈
 
 - Python + FastAPI 后端
 - SQLite 存储（唯一真相源）
-- Groq Whisper (STT) + Groq Llama (LLM) + Azure Speech (TTS)
-- 薄前端单页（录音/放音/对话/反馈）
+- Groq Whisper (STT) + Groq（LLM，见下方踩坑记录）+ Azure Speech (TTS)
+- 薄前端单页（录音/放音/对话/反馈）—— 还没做，目前只有 FastAPI 接口 + Swagger UI (`/docs`) 手测
 
 ## 核心约束（违背即破坏产品）
 
@@ -48,6 +59,19 @@ Agent 做口语演练 + 演练后诊断，把结果导出给 Anki 插件 langhel
 生词卡：`word` `meaning`
 
 agent 内部额外字段：`language` `mastery` `last_practiced`（导出病句/生词时剥离，不进 langhelper 文件）
+
+## 实现踩坑记录
+
+- **Groq 的模型列表会变**：`llama-3.3-70b-versatile` 已经从当前账号的可用模型里下架，
+  现在默认用 `openai/gpt-oss-120b`（注意：这是 OpenAI 开源的开放权重模型，Groq 自己
+  托管在它的硬件上跑，走的是 `GROQ_API_KEY` 和 Groq 的 endpoint，**不是在调 OpenAI 的
+  API**，命名里的 `openai/` 只是 Groq 标注权重来源的前缀，跟 Meta 的 `llama-*`、阿里的
+  `qwen/*` 是一个套路）。以后再 404，先用 `client.models.list()` 查当前账号实际有什么，
+  别死记模型名。默认值在 `config.py` 的 `GROQ_MODEL` / `GROQ_WHISPER_MODEL`，`.env` 可覆盖。
+- **LLM 生成的 `*叹气*` 这类舞台指示不能直接喂给 TTS**：Azure 会把星号原样念出来
+  （"Asterisk soupire Asterisk"），拿合成音频回灌 Whisper 验证时才发现。已经在
+  `langpractice/tts_text.py::strip_for_speech()` 里处理——只影响送进 TTS 的文本，
+  文字记录（debrief transcript、返回给前端的文字）不受影响，不要在别的地方重复处理。
 
 ## 已推迟的增量想法（别忘）
 
