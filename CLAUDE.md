@@ -12,8 +12,13 @@ Agent 做口语演练 + 演练后诊断，把结果导出给 Anki 插件 langhel
 
 - **task 01（文字版闭环）已完成并跑通**：角色卡对话 → "结束" → Debrief → 存 SQLite →
   导出 langhelper 格式，用真实 Groq API 验证过（不只是 mock）。
-- **语音层已接上**：录音 → Groq Whisper STT → 复用同一套 `session.turn()` 角色扮演逻辑
-  （铁律不受影响）→ Azure TTS 念出回复。手动测试脚本见 `scripts/voice_test.py`。
+- **语音层正在从"回合制 REST"迁移到"Pipecat 全双工"**（2026-08 拍板，见 SPEC.md 和技术栈）。
+  旧版（录音按钮 → `session.turn()` 一问一答 → Azure TTS）已跑通验证过，但即将被替换——
+  `session.py` 的回合制逻辑、`app.py` 里的 `/sessions/*/messages` `/voice-messages`
+  `/opening-audio` 这几个端点都是要被 Pipecat pipeline 取代的部分，**遇到就不用再当成
+  目标架构去修**。`debrief.py` `export.py` `db.py` `personas.py` `models.py` 这些
+  跟 transport 无关，全部保留复用。手动测试脚本 `scripts/voice_test.py` 也是旧架构的，
+  Pipecat 跑通后要么改要么废弃。
 - 代码结构见 `langpractice/`：`llm/` `stt/` `tts/` 三层都是 Protocol 接口 + 具体实现，
   没配对应 API key 时自动退回 Mock，不阻塞开发（`GROQ_API_KEY` 缺失时 LLM 退回
   `MockLLMClient`、STT 端点直接 503；`AZURE_SPEECH_KEY` 缺失时 TTS 退回占位提示音）。
@@ -35,8 +40,14 @@ Agent 做口语演练 + 演练后诊断，把结果导出给 Anki 插件 langhel
 
 - Python + FastAPI 后端
 - SQLite 存储（唯一真相源）
-- Groq Whisper (STT) + Groq（LLM，见下方踩坑记录）+ Azure Speech (TTS)
-- 薄前端单页（录音/放音/对话/反馈）—— 已做，见 `web/index.html`；`/docs` 的 Swagger UI 还留着方便测接口
+- **语音编排换成 Pipecat**（2026-08 决定，详见 SPEC.md）：全双工实时 pipeline，VAD 自动
+  断句、支持打断，比之前手写的"录音按钮 + REST 一问一答"更沉浸、更接近真实对话。
+  transport 用 `SmallWebRTCTransport`（本地、不依赖 Daily 云）。
+- Groq Whisper (STT，Pipecat 里是 VAD 分段不是逐词流式) + Groq（LLM，见下方踩坑记录）
+  + Azure Speech (TTS)
+- 薄前端单页 `web/index.html`：场景选择/Debrief 卡片/导出面板保留，录音播放部分正在换成
+  Pipecat 的 `@pipecat-ai/client-js` + `@pipecat-ai/small-webrtc-transport`；
+  `/docs` 的 Swagger UI 还留着方便测非语音接口
 
 ## 核心约束（违背即破坏产品）
 

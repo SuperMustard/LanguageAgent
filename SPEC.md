@@ -26,8 +26,11 @@ agent 实际收敛为三件事 + 一个二期增量。
 
 - 多场景角色扮演：按给定情境精准扮演角色，保持真实人设多轮对话
 - 语音对讲：STT/TTS，用口语对答，训练发音、语速、应变
-- **回合制**（说完一句处理一句），不做全双工流式
-- **铁律：演练中 AI 绝不跳出角色纠错。** 纠错只在 Debrief 阶段发生
+- **全双工实时对话**（用 Pipecat 编排）：VAD 自动判断"说完了"，不用手动点录音按钮；
+  支持打断（学习者插话时 AI 的语音回复可以被切断）——更接近真实对话的应变训练，
+  也更沉浸（演练时不用分心操作 UI）
+- **铁律：演练中 AI 绝不跳出角色纠错。** 纠错只在 Debrief 阶段发生。
+  这条铁律跟全双工与否无关——全双工只改变"怎么把话传进传出"，不改变"演练时绝不纠错"
 
 ### 2. 对话总结与反馈诊断（Debrief & Feedback）— agent 核心
 
@@ -153,12 +156,18 @@ empathie
 ## 技术栈
 
 - **后端**：Python + FastAPI
-- **LLM（角色扮演）**：一期用 Groq(Llama) 验证闭环；**法语地道度务必早测**
-  （vouvoiement、诊所同理心话术若 Llama 撑不住，角色扮演层换 Claude/GPT，STT 仍留 Groq）
-- **STT**：Groq Whisper（法语英语都强、快、便宜）
+- **语音编排**：Pipecat——把 STT/LLM/TTS 接成一条全双工实时 pipeline（VAD 断句、
+  支持打断），transport 用 `SmallWebRTCTransport`（不依赖 Daily 云服务，适合本地单人场景）
+- **LLM（角色扮演）**：Groq（当前用 `openai/gpt-oss-120b`，Groq 自己托管的开放权重模型，
+  见 CLAUDE.md 实现踩坑记录）；**法语地道度务必持续关注**
+  （vouvoiement、诊所同理心话术若撑不住，角色扮演层可换 Mistral/Claude/GPT，STT 仍留 Groq）
+- **STT**：Groq Whisper（法语英语都强、快、便宜；Pipecat 的 `GroqSTTService` 是 VAD 分段，
+  不是逐词流式，说完一段才转文字，符合 Whisper 本身的限制）
 - **TTS**：Azure Speech（即 Edge-TTS 的正牌合规版，法语声音一致）
 - **存储**：SQLite（agent 的唯一真相源）
-- **前端**：一期最薄单页 —— 录音、放音、显示对话/反馈、"结束"按钮
+- **前端**：最薄单页 —— 场景选择、Pipecat client（`@pipecat-ai/client-js` +
+  `@pipecat-ai/small-webrtc-transport`）接管录音/放音、对话气泡、Debrief 卡片、
+  导出面板、"结束"按钮
 
 ## 存储架构原则
 
@@ -174,8 +183,8 @@ empathie
 
 **一期（使用优先，先跑通）**
 - 文字版核心闭环：角色卡对话 → "结束" → Debrief → 存 SQLite → 导出 langhelper 格式
-- 语音层：录音 + Groq Whisper STT + Azure TTS，包在演练回合外
-- 演练/Debrief 双模式严格分离
+- 语音层：Pipecat 全双工实时语音（Groq STT/LLM + Azure TTS，VAD 自动断句、可打断）
+- 演练/Debrief 双模式严格分离——全双工只变语音怎么传，纠错时机铁律不受影响
 
 **二期**
 - 口语侧诱导：新场景前检索旧表达注入角色卡隐藏目标
@@ -187,4 +196,3 @@ empathie
 - 不实现文字侧造句/翻译诱导（langhelper 已有）
 - 不实现病句同类错误生成（langhelper sentence_high 已有）
 - 不直接操作 Anki 数据库
-- 一期不做全双工语音流
