@@ -37,13 +37,18 @@ Agent 做口语演练 + 演练后诊断，把结果导出给 Anki 插件 langhel
   两个服务器的路由都能访问、`export`/`shutdown` 等非语音功能不受影响。**麦克风授权这一步
   卡在浏览器自动化里过不去**（见下面实现踩坑记录），实际的语音对话/打断/Debrief 触发
   需要你自己在真实浏览器里点一遍确认。
-- **口语侧诱导（二期旗舰功能）已实现**：`langpractice/induction.py`——`run_bot()` 开场
-  前按 `card.language`（不限场景）查 `expressions`/`words` 两张表，按
-  `(mastery, last_practiced)` 升序取最多 2 条最久没碰的旧表达/生词，格式化后注入
-  `personas.py` 的 `induction_block`（模板本来就留了这个槽位，只是一期没填）。
-  真实数据验证过：读到之前测试攒下的 fr 记录，渲染出的 system prompt 里"隐藏引导目标"
-  段落正确出现，格式跟 persona_template.md 定义的一致。掌握度算法还没做，mastery 现在
-  对同语言记录全是 0，排序退化成纯按 last_practiced——这是已知的临时状态，不是 bug。
+- **口语侧诱导（二期旗舰功能）+ 掌握度更新算法都已实现**：`langpractice/induction.py`。
+  - `run_bot()` 开场前按 `card.language`（不限场景）查 `expressions`/`words` 两张表，按
+    `(mastery, last_practiced)` 升序取最多 2 条旧表达/生词（`retrieve_induction_targets`，
+    返回 `InductionTarget` 对象，带 id/kind/label），格式化后注入 `personas.py` 的
+    `induction_block`（模板本来就留了这个槽位，一期没填）。
+  - "结束演练"时，Debrief 之外**另一次独立的非流式复盘调用**
+    （`review_induction_usage()`，prompt 见 `prompts/induction_review_prompt.md`）判断
+    诱导目标有没有被用上：讲对了 `apply_mastery_updates()` 把 mastery +1，讲错了 -1
+    （db.py 里 SQL `MAX(0, ...)` 卡下限），没用上/判断不出来就不动，同时刷新
+    `last_practiced`（除了没动的情况）——这样"最久没碰"才会真的轮换，不会同一条卡死。
+  - 都用真实 Groq API 验证过（插测试行 → 编两段 transcript，一段用对了一段完全没用 →
+    确认 `used_correctly`/`not_used` 判断对了、mastery 真的从 0 变 1 → 删测试行）。
 - 改动历史看 `git log`，这里不重复维护——已知的非显而易见的坑记在下面「实现踩坑记录」。
 
 ## 技术栈

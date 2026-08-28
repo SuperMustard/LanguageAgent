@@ -95,6 +95,27 @@ def delete_word(conn: sqlite3.Connection, word_id: int) -> bool:
     return cursor.rowcount > 0
 
 
+def adjust_expression_mastery(
+    conn: sqlite3.Connection, expression_id: int, delta: int, now_iso: str
+) -> None:
+    """口语侧诱导复盘用：讲对了 delta=+1，讲错了 delta=-1（下限 0 靠 SQL 的 MAX 卡住，
+    不会变负数）。同时把 last_practiced 刷新成这次复盘的时间，不然同一条会一直被判定
+    "最久没碰"，永远排在诱导检索的最前面。"""
+    conn.execute(
+        "UPDATE expressions SET mastery = MAX(0, mastery + ?), last_practiced = ? WHERE id = ?",
+        (delta, now_iso, expression_id),
+    )
+    conn.commit()
+
+
+def adjust_word_mastery(conn: sqlite3.Connection, word_id: int, delta: int, now_iso: str) -> None:
+    conn.execute(
+        "UPDATE words SET mastery = MAX(0, mastery + ?), last_practiced = ? WHERE id = ?",
+        (delta, now_iso, word_id),
+    )
+    conn.commit()
+
+
 def fetch_expressions(conn: sqlite3.Connection, language: str) -> list[Expression]:
     rows = conn.execute(
         "SELECT * FROM expressions WHERE language = ? ORDER BY id", (language,)

@@ -48,9 +48,13 @@ agent 实际收敛为三件事 + 一个二期增量。
   自己的 SQLite 检索 1~2 条旧表达，作为**隐藏目标**注入角色卡，让 AI 设计语境引导使用。
   见 `langpractice/induction.py` + `voice_bot.py` 的 `run_bot()`。
   - 检索条件：`语言 + 掌握度 + 最后练习时间`（按 mastery 升序、last_practiced 升序取前
-    N 条）——**掌握度更新算法还没做**，mastery 目前恒为 0，实际排序等于纯按
-    last_practiced 挑最久没碰的；掌握度更新上线后自动生效，不用改 induction.py
+    N 条）
   - **不限定场景**：只按语言检索，跟当前选的场景无关
+  - **掌握度更新算法：✅ 已实现（2026-08）**。演练结束时除了 Debrief，还有一次独立的
+    非流式复盘调用（`induction.review_induction_usage()`，prompt 见
+    `prompts/induction_review_prompt.md`），判断这场诱导目标有没有被用上：
+    讲对了 mastery +1，讲错了 mastery -1（下限 0），没用上不动（保持"最久没碰"排前面，
+    下次继续诱导）。用真实 Groq API 验证过：正确区分"用对了"和"完全没用到"两种情况。
   - 这是 langhelper 永远给不了的能力（文字插件无法在你张嘴说法语时埋钩子）
 
 ### 4. 导出（Anki Export）— 对齐 langhelper
@@ -192,7 +196,7 @@ empathie
 
 **二期**
 - 口语侧诱导：新场景前检索旧表达注入角色卡隐藏目标 ✅ 已实现
-- 掌握度更新算法（口语侧诱导的排序目前退化成纯按 last_practiced，这个上线后自动补上）
+- 掌握度更新算法：演练结束后复盘诱导目标有没有用上，更新 mastery ✅ 已实现
 - 掌握度双向同步（若需要，AnkiConnect）
 - 更多场景角色卡
 

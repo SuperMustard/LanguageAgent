@@ -41,7 +41,12 @@ from .config import (
     VAD_START_SECS,
     VAD_STOP_SECS,
 )
-from .induction import format_induction_targets, retrieve_induction_targets
+from .induction import (
+    apply_mastery_updates,
+    format_induction_targets,
+    retrieve_induction_targets,
+    review_induction_usage,
+)
 from .llm.groq_client import GroqLLMClient
 from .personas import BUILTIN_SCENARIOS, PersonaCard, render_persona_prompt
 
@@ -163,11 +168,12 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments) -> Non
             return
 
         now_iso = _now_iso()
+        transcript = _build_transcript(context)
         result = debrief.run_debrief(
             debrief_llm,
             target_language=card.target_language,
             language_code=card.language,
-            transcript=_build_transcript(context),
+            transcript=transcript,
             now_iso=now_iso,
         )
 
@@ -177,6 +183,16 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments) -> Non
                 db.insert_expressions(conn, result.sentences)
             if result.words:
                 db.insert_words(conn, result.words)
+
+            # 口语侧诱导复盘：这场开场前注入的隐藏目标有没有被用上，更新掌握度。
+            # 独立于 Debrief 的另一次非流式调用，跟角色扮演/纠错分离铁律无关——这两次
+            # 都发生在演练结束之后。
+            if induction_targets:
+                outcomes = review_induction_usage(
+                    debrief_llm, card.target_language, transcript, induction_targets
+                )
+                logger.info(f"Induction review outcomes: {outcomes}")
+                apply_mastery_updates(conn, induction_targets, outcomes, now_iso)
         finally:
             conn.close()
 
