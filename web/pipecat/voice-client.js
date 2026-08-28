@@ -15187,7 +15187,7 @@ var jf = (e) => ({
 				transport: "webrtc",
 				createDailyRoom: !1,
 				enableDefaultIceServers: !0,
-				scenario: e
+				body: { scenario: e }
 			}
 		});
 	}

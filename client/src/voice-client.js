@@ -43,7 +43,9 @@ export class VoiceSession {
         transport: 'webrtc',
         createDailyRoom: false,
         enableDefaultIceServers: true,
-        scenario,
+        // 自定义数据必须包在 "body" 里，Pipecat runner 的 /start 只把这里的东西转成
+        // runner_args.body 传给 bot()；塞在顶层（跟 transport 平级）会被直接丢弃。
+        body: { scenario },
       },
     });
   }
