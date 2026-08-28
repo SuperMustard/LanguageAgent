@@ -46,3 +46,53 @@ def test_fetch_filters_by_language():
     ])
     assert len(db.fetch_expressions(conn, "en")) == 1
     assert len(db.fetch_expressions(conn, "fr")) == 1
+
+
+def test_insert_expressions_sets_id_on_each_object():
+    conn = db.connect(":memory:")
+    e1 = Expression(zh="a", en_wrong="a", en_correct="a", error_note="a", pattern="a",
+                     language="en", last_practiced="2026-08-28T00:00:00+00:00")
+    e2 = Expression(zh="b", en_wrong="b", en_correct="b", error_note="b", pattern="b",
+                     language="en", last_practiced="2026-08-28T00:00:00+00:00")
+    db.insert_expressions(conn, [e1, e2])
+    assert e1.id is not None
+    assert e2.id is not None
+    assert e1.id != e2.id
+
+
+def test_insert_words_sets_id_on_each_object():
+    conn = db.connect(":memory:")
+    w = Word(word="exhausted", meaning="筋疲力尽的", language="en", mastery=0,
+             last_practiced="2026-08-28T00:00:00+00:00")
+    db.insert_words(conn, [w])
+    assert w.id is not None
+
+
+def test_delete_expression_removes_row_and_reports_success():
+    conn = db.connect(":memory:")
+    e = Expression(zh="a", en_wrong="a", en_correct="a", error_note="a", pattern="a",
+                    language="en", last_practiced="2026-08-28T00:00:00+00:00")
+    db.insert_expressions(conn, [e])
+
+    assert db.delete_expression(conn, e.id) is True
+    assert db.fetch_expressions(conn, "en") == []
+
+
+def test_delete_expression_missing_id_returns_false():
+    conn = db.connect(":memory:")
+    assert db.delete_expression(conn, 9999) is False
+
+
+def test_delete_word_removes_row_and_reports_success():
+    conn = db.connect(":memory:")
+    w = Word(word="exhausted", meaning="筋疲力尽的", language="en", mastery=0,
+             last_practiced="2026-08-28T00:00:00+00:00")
+    db.insert_words(conn, [w])
+
+    assert db.delete_word(conn, w.id) is True
+    assert db.fetch_words(conn, "en") == []
+
+
+def test_delete_word_missing_id_returns_false():
+    conn = db.connect(":memory:")
+    assert db.delete_word(conn, 9999) is False

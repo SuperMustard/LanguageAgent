@@ -38,12 +38,15 @@ def connect(db_path: Path = DB_PATH) -> sqlite3.Connection:
 
 
 def insert_expressions(conn: sqlite3.Connection, expressions: list[Expression]) -> None:
-    conn.executemany(
-        """
-        INSERT INTO expressions (language, zh, en_wrong, en_correct, error_note, pattern, mastery, last_practiced)
-        VALUES (:language, :zh, :en_wrong, :en_correct, :error_note, :pattern, :mastery, :last_practiced)
-        """,
-        [
+    """插入后把每条记录的 id 写回对象本身（sqlite3 的 executemany 拿不到每行的
+    lastrowid，只能逐条 execute），方便调用方（比如 voice_bot.py）马上把 id
+    传给前端，用于之后的删除操作（识别错误导致的假病句，需要能单条撤销）。"""
+    for e in expressions:
+        cursor = conn.execute(
+            """
+            INSERT INTO expressions (language, zh, en_wrong, en_correct, error_note, pattern, mastery, last_practiced)
+            VALUES (:language, :zh, :en_wrong, :en_correct, :error_note, :pattern, :mastery, :last_practiced)
+            """,
             {
                 "language": e.language,
                 "zh": e.zh,
@@ -53,31 +56,43 @@ def insert_expressions(conn: sqlite3.Connection, expressions: list[Expression]) 
                 "pattern": e.pattern,
                 "mastery": e.mastery,
                 "last_practiced": e.last_practiced,
-            }
-            for e in expressions
-        ],
-    )
+            },
+        )
+        e.id = cursor.lastrowid
     conn.commit()
 
 
 def insert_words(conn: sqlite3.Connection, words: list[Word]) -> None:
-    conn.executemany(
-        """
-        INSERT INTO words (language, word, meaning, mastery, last_practiced)
-        VALUES (:language, :word, :meaning, :mastery, :last_practiced)
-        """,
-        [
+    """同 insert_expressions：逐条插入把 id 写回对象，供前端删除用。"""
+    for w in words:
+        cursor = conn.execute(
+            """
+            INSERT INTO words (language, word, meaning, mastery, last_practiced)
+            VALUES (:language, :word, :meaning, :mastery, :last_practiced)
+            """,
             {
                 "language": w.language,
                 "word": w.word,
                 "meaning": w.meaning,
                 "mastery": w.mastery,
                 "last_practiced": w.last_practiced,
-            }
-            for w in words
-        ],
-    )
+            },
+        )
+        w.id = cursor.lastrowid
     conn.commit()
+
+
+def delete_expression(conn: sqlite3.Connection, expression_id: int) -> bool:
+    """删一条病句记录（比如识别错误导致的假诊断）。返回是否真的删到了东西。"""
+    cursor = conn.execute("DELETE FROM expressions WHERE id = ?", (expression_id,))
+    conn.commit()
+    return cursor.rowcount > 0
+
+
+def delete_word(conn: sqlite3.Connection, word_id: int) -> bool:
+    cursor = conn.execute("DELETE FROM words WHERE id = ?", (word_id,))
+    conn.commit()
+    return cursor.rowcount > 0
 
 
 def fetch_expressions(conn: sqlite3.Connection, language: str) -> list[Expression]:

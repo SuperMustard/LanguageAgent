@@ -132,13 +132,28 @@
     margin-bottom: 16px;
   }
   .card {
+    position: relative;
     border: 1px solid var(--border);
     border-radius: 8px;
-    padding: 12px;
+    padding: 12px 36px 12px 12px;
     margin-bottom: 10px;
     font-size: 13px;
     overflow-wrap: break-word;
   }
+  .card.removed { opacity: 0.4; }
+  .card-delete-btn {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    line-height: 1;
+    border-radius: 999px;
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .card-delete-btn:hover { color: var(--error); border-color: var(--error); }
   .card .zh { font-weight: 600; margin-bottom: 6px; }
   .card .wrong { color: var(--error); text-decoration: line-through; }
   .card .correct { color: #2f7a4f; font-weight: 600; }
@@ -152,13 +167,28 @@
     border-radius: 999px;
   }
   .word-item {
-    display: inline-block;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
     background: var(--ai-bubble);
     border-radius: 999px;
-    padding: 4px 10px;
+    padding: 4px 6px 4px 10px;
     margin: 3px 4px 3px 0;
     font-size: 13px;
   }
+  .word-item.removed { opacity: 0.4; }
+  .word-delete-btn {
+    width: 18px;
+    height: 18px;
+    padding: 0;
+    line-height: 1;
+    border-radius: 999px;
+    font-size: 12px;
+    color: var(--muted);
+    background: transparent;
+    border: none;
+  }
+  .word-delete-btn:hover { color: var(--error); }
   h2 { font-size: 15px; margin: 0 0 10px; }
   .export-block {
     margin-top: 12px;
@@ -356,6 +386,22 @@ function toggleMic() {
   el.micBtn.textContent = enabled ? '🎤 麦克风开启（点击静音）' : '🔇 已静音（点击开启）';
 }
 
+async function deleteDiagnosis(kind, id, container) {
+  // kind: 'expressions' | 'words'。识别错误导致的假诊断可以直接删掉，不用留着。
+  if (id == null) return;
+  const btn = container.querySelector('button');
+  if (btn) btn.disabled = true;
+  try {
+    const res = await fetch(`/${kind}/${id}`, { method: 'DELETE' });
+    if (!res.ok) throw new Error((await res.json()).detail || res.statusText);
+    container.classList.add('removed');
+    if (btn) btn.remove();
+  } catch (e) {
+    showError('删除失败：' + e.message);
+    if (btn) btn.disabled = false;
+  }
+}
+
 function renderDebrief(data) {
   el.debriefSentences.innerHTML = '';
   el.debriefWords.innerHTML = '';
@@ -373,6 +419,13 @@ function renderDebrief(data) {
       <div class="note">${s.error_note}</div>
       <span class="pattern">${s.pattern}</span>
     `;
+    const deleteBtn = document.createElement('button');
+    deleteBtn.type = 'button';
+    deleteBtn.className = 'card-delete-btn';
+    deleteBtn.title = '删除这条诊断（比如语音识别错了，不是真的病句）';
+    deleteBtn.textContent = '✕';
+    deleteBtn.addEventListener('click', () => deleteDiagnosis('expressions', s.id, card));
+    card.appendChild(deleteBtn);
     el.debriefSentences.appendChild(card);
   }
 
@@ -384,7 +437,16 @@ function renderDebrief(data) {
     for (const w of data.words) {
       const chip = document.createElement('span');
       chip.className = 'word-item';
-      chip.textContent = w.meaning ? `${w.word}｜${w.meaning}` : w.word;
+      const label = document.createElement('span');
+      label.textContent = w.meaning ? `${w.word}｜${w.meaning}` : w.word;
+      const deleteBtn = document.createElement('button');
+      deleteBtn.type = 'button';
+      deleteBtn.className = 'word-delete-btn';
+      deleteBtn.title = '删除这个生词（比如语音识别错了）';
+      deleteBtn.textContent = '✕';
+      deleteBtn.addEventListener('click', () => deleteDiagnosis('words', w.id, chip));
+      chip.appendChild(label);
+      chip.appendChild(deleteBtn);
       el.debriefWords.appendChild(chip);
     }
   }

@@ -45,6 +45,31 @@ def list_scenarios() -> dict[str, str]:
     return {key: card.scenario_description for key, card in BUILTIN_SCENARIOS.items()}
 
 
+@app.delete("/expressions/{expression_id}")
+def delete_expression(expression_id: int) -> dict:
+    """删一条病句诊断——常见场景是语音识别错了，诊断其实是针对错误转写文本的假病句。"""
+    conn = db.connect()
+    try:
+        deleted = db.delete_expression(conn, expression_id)
+    finally:
+        conn.close()
+    if not deleted:
+        raise HTTPException(404, f"expression {expression_id} not found")
+    return {"status": "deleted"}
+
+
+@app.delete("/words/{word_id}")
+def delete_word(word_id: int) -> dict:
+    conn = db.connect()
+    try:
+        deleted = db.delete_word(conn, word_id)
+    finally:
+        conn.close()
+    if not deleted:
+        raise HTTPException(404, f"word {word_id} not found")
+    return {"status": "deleted"}
+
+
 @app.get("/export/{language}")
 def export_language(language: str) -> dict:
     if language not in SUPPORTED_LANGUAGES:

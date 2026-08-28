@@ -169,6 +169,7 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments) -> Non
         payload: dict[str, Any] = {
             "sentences": [
                 {
+                    "id": e.id,
                     "zh": e.zh,
                     "en_wrong": e.en_wrong,
                     "en_correct": e.en_correct,
@@ -177,7 +178,7 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments) -> Non
                 }
                 for e in result.sentences
             ],
-            "words": [{"word": w.word, "meaning": w.meaning} for w in result.words],
+            "words": [{"id": w.id, "word": w.word, "meaning": w.meaning} for w in result.words],
         }
         await rtvi.send_server_response(message, payload)
 
