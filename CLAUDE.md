@@ -78,6 +78,12 @@ agent 内部额外字段：`language` `mastery` `last_practiced`（导出病句/
   （"Asterisk soupire Asterisk"），拿合成音频回灌 Whisper 验证时才发现。已经在
   `langpractice/tts_text.py::strip_for_speech()` 里处理——只影响送进 TTS 的文本，
   文字记录（debrief transcript、返回给前端的文字）不受影响，不要在别的地方重复处理。
+- **Azure Speech F0（免费档）TTS 硬限制 20 次请求/60 秒，不可调**（微软官方文档，
+  https://learn.microsoft.com/azure/ai-services/speech-service/speech-services-quotas-and-limits）。
+  正常演练节奏（几句话一个来回）不太会碰到，但连续测试（尤其是我边测边你也在测）很容易
+  在一分钟内攒够 20 次触发 429。已在 `AzureTTSClient.synthesize()` 里加了 429 重试退避
+  （读 `Retry-After` header，没有就退避 5 秒，最多重试 3 次）。真要更高吞吐得升级到 S0
+  付费档——不要误以为是代码 bug 去瞎排查。
 
 ## 已推迟的增量想法（别忘）
 
