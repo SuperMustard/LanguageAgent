@@ -62,18 +62,31 @@ Agent 做口语演练 + 演练后诊断，把结果导出给 Anki 插件 langhel
   description, language)`——用户给一段自由中文描述，LLM 按 persona_template.md
   的字段结构填充生成 `PersonaCard`，`key` 自动生成 `custom_` 前缀 + 短 uuid。
   `PersonaCard` 挪到了 `models.py`（原来在 `personas.py`，为了不让 `db.py` 反过来
-  import `personas.py` 成环）。存进 SQLite 的新 `scenarios` 表（`db.py` 的
-  `insert_scenario`/`fetch_scenario`/`fetch_all_scenarios`/`delete_scenario`）。
-  `personas.get_scenario(conn, key)` / `list_all_scenario_descriptions(conn)`
-  把内置场景（`BUILTIN_SCENARIOS` 内存 dict）和自动生成的场景（DB）合并起来用，
-  `app.py` 的 `/scenarios` 和 `voice_bot.py` 的 `_resolve_scenario()` 都走这两个
-  函数，不用分别处理两种来源。前端主页加了"新建场景（AI 自动生成）"折叠面板。
-  用真实 Groq API + claude-in-chrome 全链路验证过两次（不同场景描述、不同语言），
-  生成的角色卡内容合理、`get_scenario` 能正确查到、`render_persona_prompt` 渲染
-  干净无残留占位符——测试用的场景生成完手动删掉了，没留在库里。
-  **场景卡目前没有删除入口**（DB 层 `delete_scenario` 有了，UI 没接）——如果生成的
-  场景想清理，现在只能像我测试时那样直接调 Python，之后可以补个删除按钮，但这次
-  没人要求，没做。
+  import `personas.py` 成环）。
+- **场景模型后来又统一简化了一轮（同一天）：不再区分"内置"和"自动生成"**——原来
+  `personas.py` 有个硬编码的 `BUILTIN_SCENARIOS` dict，跟 DB 里的自动生成场景是
+  两套并行逻辑，`get_scenario()`/`list_all_scenario_descriptions()` 得两边分别查、
+  合并结果。用户明确说不需要这个区分，于是：
+  - 原来两个内置场景（`clinic_fr`/`interview_en`）变成 `seed_scenarios.py` 里的
+    纯数据（`SEED_SCENARIOS: list[PersonaCard]`），`db.connect()` 在 `scenarios`
+    表**首次为空**时插进去（`_seed_scenarios_if_empty()`），插完就是普通行——
+    跟场景管理页里删/查其它场景没有任何区别，包括**能被删掉**（没有特殊保护，
+    因为用户要的就是不做区分）。判断"首次为空"而不是常驻 `INSERT OR IGNORE`，
+    是为了不让用户删掉种子场景后、下次启动又被复活。
+  - `personas.py` 的 `BUILTIN_SCENARIOS` 整个删掉，`get_scenario()`/
+    `list_all_scenario_descriptions()` 简化成直接查 `scenarios` 表，一条路径。
+  - **场景管理页已做完**：`web/scenario-manager.html`（`GET /scenario-manager`
+    serve），列出所有场景（种子的 + 自动生成的混在一起，没有来源标记），每条能删
+    （`DELETE /scenarios/{key}`）。全字段的 `GET /scenarios/full` 是给这个页面用的，
+    跟 `GET /scenarios`（下拉框用的 `{key: 描述}` 简化格式）分开，别混。主页头部
+    加了"场景管理 →"链接（跟"历史记录管理 →"并排）。
+  - `voice_bot.py` 的 `_resolve_scenario()` 改成接收 `conn` 参数而不是自己开连接
+    ——之前自己开连接会导致单元测试意外打到真实生产数据库文件，改成外部传入后
+    测试可以传 `:memory:`，跟项目里其它接 DB 的函数（`retrieve_induction_targets`
+    等）保持同一个模式。
+  - 全部用真实 Groq API + claude-in-chrome 在真实运行的 app 上验证过：生成场景、
+    场景管理页正确列出（含种子场景，无来源标记）、删除一条种子场景级别的测试数据
+    后确认真的从 `/scenarios/full` 里消失、主页场景下拉框仍能正常工作。
 - 改动历史看 `git log`，这里不重复维护——已知的非显而易见的坑记在下面「实现踩坑记录」。
 
 ## 技术栈

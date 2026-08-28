@@ -36,8 +36,8 @@ class DebriefResult:
 
 @dataclass
 class PersonaCard:
-    """角色卡——一个场景的完整设定。内置场景是硬编码的（personas.py 的
-    BUILTIN_SCENARIOS），自动生成的场景存在 SQLite 的 scenarios 表里（db.py）。
+    """角色卡——一个场景的完整设定。全部存在 SQLite 的 scenarios 表里（db.py），
+    种子场景（seed_scenarios.py）和 AI 自动生成的场景没有区别，都是普通行，能改能删。
     放在 models.py 而不是 personas.py，是因为 db.py 要能返回 PersonaCard，
     放 personas.py 会跟 db.py 互相 import 成环。"""
 

@@ -136,7 +136,9 @@ def test_fetch_all_scenarios_returns_every_row():
     db.insert_scenario(conn, _scenario_card(key="custom_a"))
     db.insert_scenario(conn, _scenario_card(key="custom_b"))
     scenarios = db.fetch_all_scenarios(conn)
-    assert {s.key for s in scenarios} == {"custom_a", "custom_b"}
+    # 种子场景（clinic_fr/interview_en）在 connect() 时已经播种了，这里只断言
+    # 新插入的两条也在，不断言总数——种子场景不是这个测试关心的事。
+    assert {"custom_a", "custom_b"} <= {s.key for s in scenarios}
 
 
 def test_delete_scenario_removes_row_and_reports_success():
@@ -149,3 +151,31 @@ def test_delete_scenario_removes_row_and_reports_success():
 def test_delete_scenario_missing_key_returns_false():
     conn = db.connect(":memory:")
     assert db.delete_scenario(conn, "nope") is False
+
+
+def test_connect_seeds_scenarios_on_fresh_db():
+    conn = db.connect(":memory:")
+    keys = {s.key for s in db.fetch_all_scenarios(conn)}
+    assert {"clinic_fr", "interview_en"} <= keys
+
+
+def test_seeded_scenarios_are_ordinary_rows_deletable_like_any_other():
+    # 没有"内置场景删不掉"这种特殊保护——用户明确说了不需要区分。
+    conn = db.connect(":memory:")
+    assert db.delete_scenario(conn, "clinic_fr") is True
+    assert db.fetch_scenario(conn, "clinic_fr") is None
+
+
+def test_connect_does_not_reseed_once_scenarios_table_is_non_empty():
+    # 场景表非空时不会再播种——不然删了种子场景，下次 connect() 又会把它复活。
+    # sqlite3 的 ":memory:" 每次 connect() 都是全新数据库，这里用同一个 conn 手动模拟
+    # "表非空后再跑一次播种逻辑"，确认它是幂等的、不会重复插入。
+    conn = db.connect(":memory:")
+    db.delete_scenario(conn, "clinic_fr")
+    remaining_before = len(db.fetch_all_scenarios(conn))
+
+    db._seed_scenarios_if_empty(conn)  # 模拟同一个数据库文件上的下一次 connect()
+
+    remaining_after = len(db.fetch_all_scenarios(conn))
+    assert remaining_after == remaining_before
+    assert db.fetch_scenario(conn, "clinic_fr") is None

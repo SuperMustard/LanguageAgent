@@ -3,6 +3,7 @@ from pathlib import Path
 
 from .config import DB_PATH
 from .models import Expression, PersonaCard, Word
+from .seed_scenarios import SEED_SCENARIOS
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS expressions (
@@ -47,7 +48,18 @@ def connect(db_path: Path = DB_PATH) -> sqlite3.Connection:
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     conn.executescript(SCHEMA)
+    _seed_scenarios_if_empty(conn)
     return conn
+
+
+def _seed_scenarios_if_empty(conn: sqlite3.Connection) -> None:
+    """scenarios 表首次为空（全新数据库，或者用户把种子场景也删光了）时塞两条默认场景，
+    插完就是普通行，跟场景管理页里删/查其它场景没有区别。不用 INSERT OR IGNORE 常驻做，
+    不然用户删掉种子场景后，下次 connect() 又会把它复活——只在"整张表空"时播种一次。"""
+    (count,) = conn.execute("SELECT COUNT(*) FROM scenarios").fetchone()
+    if count == 0:
+        for card in SEED_SCENARIOS:
+            insert_scenario(conn, card)
 
 
 def insert_expressions(conn: sqlite3.Connection, expressions: list[Expression]) -> None:

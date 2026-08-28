@@ -6,34 +6,9 @@ from .models import PersonaCard
 
 _TEMPLATE_PATH = Path(__file__).resolve().parent.parent / "prompts" / "persona_template.md"
 
-
-# 加新内置场景 = 在这里加一条 PersonaCard，不用碰其它逻辑。
-# 场景卡自动生成的场景（见 scenario_gen.py）存在 SQLite 的 scenarios 表，不在这个 dict
-# 里——get_scenario()/list_all_scenario_descriptions() 会把两边合并起来用。
-BUILTIN_SCENARIOS: dict[str, PersonaCard] = {
-    "clinic_fr": PersonaCard(
-        key="clinic_fr",
-        language="fr",
-        target_language="French",
-        role_identity="一位来做按摩治疗的客人，今天诸事不顺",
-        emotional_state="烦躁、有点不耐烦，但不至于无理取闹",
-        speaking_style="简短、带情绪，偶尔叹气",
-        hidden_motivation="其实想放松，但嘴上不饶人；被真诚对待后会慢慢软化",
-        scenario_description="客人刚进诊所，迟到了又找不到车位，一肚子气。你（学习者）是治疗师，要安抚并顺利开始 treatment。",
-        difficulty_level="中级，语速正常，用日常口语",
-    ),
-    "interview_en": PersonaCard(
-        key="interview_en",
-        language="en",
-        target_language="English",
-        role_identity="一位招聘经理",
-        emotional_state="专业、友好但有评估性",
-        speaking_style="清晰、结构化，会追问细节",
-        hidden_motivation="想判断候选人是否真的合适，会礼貌地深挖",
-        scenario_description="一场30分钟的岗位面试，你（学习者）是候选人。",
-        difficulty_level="中级偏上，会用一些职场惯用表达",
-    ),
-}
+# 场景（内置的两个种子场景 + 自动生成的场景）统一存在 SQLite 的 scenarios 表，没有
+# "内置 vs 自定义"的区分——种子场景只是 db.py 在表首次为空时插的两条普通行
+# （见 seed_scenarios.py），之后就是普通数据，能改能删，跟场景管理页里的其它场景一样。
 
 
 def _load_template_body() -> str:
@@ -73,16 +48,9 @@ def render_persona_prompt(card: PersonaCard, induction_targets: str = "") -> str
 
 
 def get_scenario(conn: sqlite3.Connection, key: str) -> PersonaCard | None:
-    """内置场景优先查内存 dict，查不到再查 scenarios 表（自动生成的场景）。"""
-    card = BUILTIN_SCENARIOS.get(key)
-    if card is not None:
-        return card
     return db.fetch_scenario(conn, key)
 
 
 def list_all_scenario_descriptions(conn: sqlite3.Connection) -> dict[str, str]:
-    """给场景下拉框用：内置 + 自动生成的场景合并成一个 {key: 场景描述}。"""
-    result = {key: card.scenario_description for key, card in BUILTIN_SCENARIOS.items()}
-    for card in db.fetch_all_scenarios(conn):
-        result[card.key] = card.scenario_description
-    return result
+    """给场景下拉框用：{key: 场景描述}。"""
+    return {card.key: card.scenario_description for card in db.fetch_all_scenarios(conn)}

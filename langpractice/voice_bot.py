@@ -5,6 +5,7 @@
 跑法：python -m langpractice.voice_bot   （默认端口 7860，见 pipecat.runner.run.main）
 """
 
+import sqlite3
 from datetime import datetime, timezone
 from typing import Any
 
@@ -76,14 +77,10 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-def _resolve_scenario(runner_args: RunnerArguments) -> PersonaCard:
+def _resolve_scenario(conn: sqlite3.Connection, runner_args: RunnerArguments) -> PersonaCard:
     body = runner_args.body or {}
     scenario_key = body.get("scenario", "clinic_fr")
-    conn = db.connect()
-    try:
-        card = get_scenario(conn, scenario_key)
-    finally:
-        conn.close()
+    card = get_scenario(conn, scenario_key)
     if card is None:
         raise ValueError(f"unknown scenario: {scenario_key}")
     return card
@@ -100,16 +97,17 @@ def _build_transcript(context: LLMContext) -> str:
 
 
 async def run_bot(transport: BaseTransport, runner_args: RunnerArguments) -> None:
-    card = _resolve_scenario(runner_args)
-    logger.info(f"Starting voice bot, scenario={card.key}")
-
-    # 口语侧诱导（二期）：不限定场景，按语言检索旧表达，注入隐藏目标。没有历史记录时
-    # targets 是空列表，render_persona_prompt 自然退化成一期行为（induction_block 留空）。
-    induction_conn = db.connect()
+    # 场景解析 + 诱导检索都是开场前的一次性读库，共用一个连接。
+    startup_conn = db.connect()
     try:
-        induction_targets = retrieve_induction_targets(induction_conn, card.language)
+        card = _resolve_scenario(startup_conn, runner_args)
+        # 口语侧诱导（二期）：不限定场景，按语言检索旧表达，注入隐藏目标。没有历史记录时
+        # targets 是空列表，render_persona_prompt 自然退化成一期行为（induction_block 留空）。
+        induction_targets = retrieve_induction_targets(startup_conn, card.language)
     finally:
-        induction_conn.close()
+        startup_conn.close()
+
+    logger.info(f"Starting voice bot, scenario={card.key}")
     if induction_targets:
         logger.info(f"Induction targets for this session: {induction_targets}")
 

@@ -1,5 +1,6 @@
 import pytest
 
+from langpractice import db
 from langpractice.voice_bot import _build_transcript, _resolve_scenario
 
 
@@ -17,24 +18,28 @@ class _FakeContext:
 
 
 def test_resolve_scenario_uses_body_scenario_key():
-    card = _resolve_scenario(_FakeRunnerArgs({"scenario": "interview_en"}))
+    conn = db.connect(":memory:")  # 播种了 clinic_fr/interview_en，不碰真实数据库文件
+    card = _resolve_scenario(conn, _FakeRunnerArgs({"scenario": "interview_en"}))
     assert card.key == "interview_en"
     assert card.language == "en"
 
 
 def test_resolve_scenario_defaults_to_clinic_fr_when_body_empty():
-    card = _resolve_scenario(_FakeRunnerArgs({}))
+    conn = db.connect(":memory:")
+    card = _resolve_scenario(conn, _FakeRunnerArgs({}))
     assert card.key == "clinic_fr"
 
 
 def test_resolve_scenario_defaults_when_body_none():
-    card = _resolve_scenario(_FakeRunnerArgs(None))
+    conn = db.connect(":memory:")
+    card = _resolve_scenario(conn, _FakeRunnerArgs(None))
     assert card.key == "clinic_fr"
 
 
 def test_resolve_scenario_unknown_key_raises():
+    conn = db.connect(":memory:")
     with pytest.raises(ValueError):
-        _resolve_scenario(_FakeRunnerArgs({"scenario": "does_not_exist"}))
+        _resolve_scenario(conn, _FakeRunnerArgs({"scenario": "does_not_exist"}))
 
 
 def test_build_transcript_only_includes_user_and_assistant():

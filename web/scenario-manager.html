@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>场景管理</title>
+<style>
+  :root {
+    --bg: #f6f5f2;
+    --panel: #ffffff;
+    --border: #e2ded6;
+    --text: #2a2723;
+    --muted: #86807a;
+    --accent: #b5553a;
+    --accent-dark: #8f4230;
+    --ai-bubble: #f1e8dd;
+    --error: #b3392c;
+    --error-bg: #fbe9e6;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    overflow-x: hidden;
+  }
+  .wrap {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 24px 16px 80px;
+  }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  h2 { font-size: 15px; margin: 0 0 10px; }
+  .sub { color: var(--muted); font-size: 13px; margin-bottom: 20px; }
+  .back-link {
+    display: inline-block;
+    font-size: 13px;
+    color: var(--accent);
+    text-decoration: none;
+    margin-bottom: 12px;
+  }
+  .back-link:hover { text-decoration: underline; }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  button {
+    font-size: 14px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: #fff;
+    color: var(--text);
+    cursor: pointer;
+  }
+  button:disabled { opacity: 0.45; cursor: not-allowed; }
+  #status { font-size: 13px; color: var(--muted); min-height: 18px; margin-top: 8px; }
+  #error {
+    display: none;
+    background: var(--error-bg);
+    color: var(--error);
+    border: 1px solid var(--error);
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-size: 13px;
+    margin-bottom: 16px;
+  }
+  .record {
+    position: relative;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 36px 12px 12px;
+    margin-bottom: 10px;
+    font-size: 13px;
+    overflow-wrap: break-word;
+  }
+  .record.removed { opacity: 0.4; }
+  .record-delete-btn {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    line-height: 1;
+    border-radius: 999px;
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .record-delete-btn:hover { color: var(--error); border-color: var(--error); }
+  .record .top-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+  }
+  .record .lang-badge {
+    background: var(--ai-bubble);
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+  }
+  .record .key { color: var(--muted); font-size: 11px; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+  .record .description { font-weight: 600; margin-bottom: 8px; }
+  .field { margin-top: 4px; }
+  .field .label { color: var(--muted); }
+  .empty { color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="back-link" href="/">← 返回演练</a>
+  <h1>场景管理</h1>
+  <div class="sub">所有场景，不区分内置还是 AI 自动生成——都是一样的数据，都能删。</div>
+
+  <div id="error"></div>
+
+  <div class="panel">
+    <div class="row">
+      <button id="refresh-btn">刷新</button>
+    </div>
+    <div id="status"></div>
+  </div>
+
+  <div class="panel">
+    <div id="scenarios-list"></div>
+  </div>
+</div>
+
+<script>
+const el = {
+  refreshBtn: document.getElementById('refresh-btn'),
+  status: document.getElementById('status'),
+  error: document.getElementById('error'),
+  scenariosList: document.getElementById('scenarios-list'),
+};
+
+function showError(msg) {
+  el.error.textContent = msg;
+  el.error.style.display = 'block';
+}
+
+function clearError() {
+  el.error.style.display = 'none';
+}
+
+function setStatus(msg) {
+  el.status.textContent = msg;
+}
+
+async function deleteScenario(key, container) {
+  const btn = container.querySelector('button');
+  if (btn) btn.disabled = true;
+  try {
+    const res = await fetch(`/scenarios/${key}`, { method: 'DELETE' });
+    if (!res.ok) throw new Error((await res.json()).detail || res.statusText);
+    container.classList.add('removed');
+    if (btn) btn.remove();
+  } catch (e) {
+    showError('删除失败：' + e.message);
+    if (btn) btn.disabled = false;
+  }
+}
+
+function renderScenarios(scenarios) {
+  el.scenariosList.innerHTML = '';
+  if (scenarios.length === 0) {
+    el.scenariosList.innerHTML = '<div class="empty">目前没有任何场景。</div>';
+    return;
+  }
+  for (const s of scenarios) {
+    const card = document.createElement('div');
+    card.className = 'record';
+    card.innerHTML = `
+      <div class="top-row">
+        <span class="lang-badge">${s.language}</span>
+        <span class="key">${s.key}</span>
+      </div>
+      <div class="description">${s.scenario_description}</div>
+      <div class="field"><span class="label">角色：</span>${s.role_identity}</div>
+      <div class="field"><span class="label">情绪：</span>${s.emotional_state}</div>
+      <div class="field"><span class="label">说话风格：</span>${s.speaking_style}</div>
+      <div class="field"><span class="label">隐藏动机：</span>${s.hidden_motivation}</div>
+      <div class="field"><span class="label">难度：</span>${s.difficulty_level}</div>
+    `;
+    const deleteBtn = document.createElement('button');
+    deleteBtn.type = 'button';
+    deleteBtn.className = 'record-delete-btn';
+    deleteBtn.title = '删除这个场景';
+    deleteBtn.textContent = '✕';
+    deleteBtn.addEventListener('click', () => deleteScenario(s.key, card));
+    card.appendChild(deleteBtn);
+    el.scenariosList.appendChild(card);
+  }
+}
+
+async function loadScenarios() {
+  clearError();
+  setStatus('加载中…');
+  try {
+    const res = await fetch('/scenarios/full');
+    if (!res.ok) throw new Error((await res.json()).detail || res.statusText);
+    const scenarios = await res.json();
+    renderScenarios(scenarios);
+    setStatus(`共 ${scenarios.length} 个场景。`);
+  } catch (e) {
+    showError('加载失败：' + e.message);
+    setStatus('');
+  }
+}
+
+el.refreshBtn.addEventListener('click', loadScenarios);
+
+loadScenarios();
+</script>
+</body>
+</html>

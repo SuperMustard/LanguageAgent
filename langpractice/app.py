@@ -33,6 +33,7 @@ _scenario_llm = _build_scenario_llm()
 _WEB_DIR = Path(__file__).resolve().parent.parent / "web"
 _INDEX_HTML_PATH = _WEB_DIR / "index.html"
 _HISTORY_HTML_PATH = _WEB_DIR / "history.html"
+_SCENARIO_MANAGER_HTML_PATH = _WEB_DIR / "scenario-manager.html"
 
 app.mount("/pipecat", StaticFiles(directory=_WEB_DIR / "pipecat"), name="pipecat-client")
 
@@ -45,6 +46,11 @@ def index() -> str:
 @app.get("/history", response_class=HTMLResponse)
 def history_page() -> str:
     return _HISTORY_HTML_PATH.read_text(encoding="utf-8")
+
+
+@app.get("/scenario-manager", response_class=HTMLResponse)
+def scenario_manager_page() -> str:
+    return _SCENARIO_MANAGER_HTML_PATH.read_text(encoding="utf-8")
 
 
 def _delayed_exit() -> None:
@@ -71,6 +77,43 @@ def list_scenarios() -> dict[str, str]:
         return personas.list_all_scenario_descriptions(conn)
     finally:
         conn.close()
+
+
+@app.get("/scenarios/full")
+def list_scenarios_full() -> list[dict]:
+    """给场景管理页用——跟 /scenarios 那个 {key: 描述} 不同，这里是完整字段，
+    种子场景和自动生成的场景一视同仁，没有区分标记。"""
+    conn = db.connect()
+    try:
+        cards = db.fetch_all_scenarios(conn)
+    finally:
+        conn.close()
+    return [
+        {
+            "key": c.key,
+            "language": c.language,
+            "target_language": c.target_language,
+            "role_identity": c.role_identity,
+            "emotional_state": c.emotional_state,
+            "speaking_style": c.speaking_style,
+            "hidden_motivation": c.hidden_motivation,
+            "scenario_description": c.scenario_description,
+            "difficulty_level": c.difficulty_level,
+        }
+        for c in cards
+    ]
+
+
+@app.delete("/scenarios/{key}")
+def delete_scenario(key: str) -> dict:
+    conn = db.connect()
+    try:
+        deleted = db.delete_scenario(conn, key)
+    finally:
+        conn.close()
+    if not deleted:
+        raise HTTPException(404, f"scenario {key} not found")
+    return {"status": "deleted"}
 
 
 @app.post("/scenarios/generate")
