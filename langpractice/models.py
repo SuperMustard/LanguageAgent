@@ -32,3 +32,21 @@ class Word:
 class DebriefResult:
     sentences: list[Expression] = field(default_factory=list)
     words: list[Word] = field(default_factory=list)
+
+
+@dataclass
+class PersonaCard:
+    """角色卡——一个场景的完整设定。内置场景是硬编码的（personas.py 的
+    BUILTIN_SCENARIOS），自动生成的场景存在 SQLite 的 scenarios 表里（db.py）。
+    放在 models.py 而不是 personas.py，是因为 db.py 要能返回 PersonaCard，
+    放 personas.py 会跟 db.py 互相 import 成环。"""
+
+    key: str
+    language: str  # 内部语言码，"en" | "fr"（对齐 SUPPORTED_LANGUAGES）
+    target_language: str  # 模板里展示给 LLM 的语言名，如 "French" / "English"
+    role_identity: str
+    emotional_state: str
+    speaking_style: str
+    hidden_motivation: str
+    scenario_description: str
+    difficulty_level: str

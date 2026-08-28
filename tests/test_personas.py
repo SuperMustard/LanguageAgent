@@ -1,4 +1,11 @@
-from langpractice.personas import BUILTIN_SCENARIOS, render_persona_prompt
+from langpractice import db
+from langpractice.models import PersonaCard
+from langpractice.personas import (
+    BUILTIN_SCENARIOS,
+    get_scenario,
+    list_all_scenario_descriptions,
+    render_persona_prompt,
+)
 
 
 def test_render_without_induction_targets_leaves_block_empty():
@@ -23,3 +30,47 @@ def test_render_fills_all_scenario_placeholders():
     assert card.role_identity in prompt
     assert card.scenario_description in prompt
     assert "{{" not in prompt
+
+
+def _custom_card(**overrides):
+    base = dict(
+        key="custom_xyz",
+        language="fr",
+        target_language="French",
+        role_identity="一位护士",
+        emotional_state="耐心但有点忙",
+        speaking_style="简洁",
+        hidden_motivation="想尽快安抚患者",
+        scenario_description="患者拒绝打针。",
+        difficulty_level="中级",
+    )
+    base.update(overrides)
+    return PersonaCard(**base)
+
+
+def test_get_scenario_finds_builtin_without_touching_db():
+    conn = db.connect(":memory:")
+    card = get_scenario(conn, "clinic_fr")
+    assert card is BUILTIN_SCENARIOS["clinic_fr"]
+
+
+def test_get_scenario_falls_back_to_custom_scenario():
+    conn = db.connect(":memory:")
+    db.insert_scenario(conn, _custom_card())
+    card = get_scenario(conn, "custom_xyz")
+    assert card is not None
+    assert card.role_identity == "一位护士"
+
+
+def test_get_scenario_unknown_key_returns_none():
+    conn = db.connect(":memory:")
+    assert get_scenario(conn, "does_not_exist") is None
+
+
+def test_list_all_scenario_descriptions_merges_builtin_and_custom():
+    conn = db.connect(":memory:")
+    db.insert_scenario(conn, _custom_card())
+    descriptions = list_all_scenario_descriptions(conn)
+    assert "clinic_fr" in descriptions
+    assert "interview_en" in descriptions
+    assert descriptions["custom_xyz"] == "患者拒绝打针。"

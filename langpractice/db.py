@@ -2,7 +2,7 @@ import sqlite3
 from pathlib import Path
 
 from .config import DB_PATH
-from .models import Expression, Word
+from .models import Expression, PersonaCard, Word
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS expressions (
@@ -26,6 +26,19 @@ CREATE TABLE IF NOT EXISTS words (
     mastery        INTEGER NOT NULL DEFAULT 0,
     last_practiced TEXT NOT NULL,
     created_at     TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS scenarios (
+    key                   TEXT PRIMARY KEY,
+    language              TEXT NOT NULL CHECK(language IN ('en','fr')),
+    target_language       TEXT NOT NULL,
+    role_identity         TEXT NOT NULL,
+    emotional_state       TEXT NOT NULL,
+    speaking_style        TEXT NOT NULL,
+    hidden_motivation     TEXT NOT NULL,
+    scenario_description  TEXT NOT NULL,
+    difficulty_level      TEXT NOT NULL,
+    created_at            TEXT NOT NULL DEFAULT (datetime('now'))
 );
 """
 
@@ -151,3 +164,59 @@ def fetch_words(conn: sqlite3.Connection, language: str) -> list[Word]:
         )
         for r in rows
     ]
+
+
+def _row_to_persona_card(row: sqlite3.Row) -> PersonaCard:
+    return PersonaCard(
+        key=row["key"],
+        language=row["language"],
+        target_language=row["target_language"],
+        role_identity=row["role_identity"],
+        emotional_state=row["emotional_state"],
+        speaking_style=row["speaking_style"],
+        hidden_motivation=row["hidden_motivation"],
+        scenario_description=row["scenario_description"],
+        difficulty_level=row["difficulty_level"],
+    )
+
+
+def insert_scenario(conn: sqlite3.Connection, card: PersonaCard) -> None:
+    """存一张场景卡自动生成（scenario_gen.py）产出的 PersonaCard。key 由调用方生成，
+    要保证唯一——内置场景的 key（clinic_fr 等）不会跟这里冲突，因为自动生成的 key
+    统一带 custom_ 前缀（见 scenario_gen.py）。"""
+    conn.execute(
+        """
+        INSERT INTO scenarios (key, language, target_language, role_identity, emotional_state,
+                                speaking_style, hidden_motivation, scenario_description, difficulty_level)
+        VALUES (:key, :language, :target_language, :role_identity, :emotional_state,
+                :speaking_style, :hidden_motivation, :scenario_description, :difficulty_level)
+        """,
+        {
+            "key": card.key,
+            "language": card.language,
+            "target_language": card.target_language,
+            "role_identity": card.role_identity,
+            "emotional_state": card.emotional_state,
+            "speaking_style": card.speaking_style,
+            "hidden_motivation": card.hidden_motivation,
+            "scenario_description": card.scenario_description,
+            "difficulty_level": card.difficulty_level,
+        },
+    )
+    conn.commit()
+
+
+def fetch_scenario(conn: sqlite3.Connection, key: str) -> PersonaCard | None:
+    row = conn.execute("SELECT * FROM scenarios WHERE key = ?", (key,)).fetchone()
+    return _row_to_persona_card(row) if row is not None else None
+
+
+def fetch_all_scenarios(conn: sqlite3.Connection) -> list[PersonaCard]:
+    rows = conn.execute("SELECT * FROM scenarios ORDER BY created_at").fetchall()
+    return [_row_to_persona_card(r) for r in rows]
+
+
+def delete_scenario(conn: sqlite3.Connection, key: str) -> bool:
+    cursor = conn.execute("DELETE FROM scenarios WHERE key = ?", (key,))
+    conn.commit()
+    return cursor.rowcount > 0

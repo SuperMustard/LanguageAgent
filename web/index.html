@@ -235,6 +235,25 @@
   </div>
 
   <div class="panel">
+    <div class="row" style="justify-content:space-between">
+      <h2>新建场景（AI 自动生成）</h2>
+      <button id="new-scenario-toggle-btn" type="button">+ 展开</button>
+    </div>
+    <div id="new-scenario-form" style="display:none">
+      <div class="sub">用一句话描述场景想法（比如"我是护士，有患者拒绝打针"），AI 会自动生成角色卡，直接加进上面的下拉框。</div>
+      <textarea id="new-scenario-description" placeholder="描述你想练习的场景…" style="min-height:70px"></textarea>
+      <div class="row" style="margin-top:8px">
+        <select id="new-scenario-language">
+          <option value="fr">法语 (fr)</option>
+          <option value="en">英语 (en)</option>
+        </select>
+        <button id="new-scenario-generate-btn" class="primary">生成场景</button>
+      </div>
+      <div id="new-scenario-status" class="sub"></div>
+    </div>
+  </div>
+
+  <div class="panel">
     <div id="chat"></div>
   </div>
 
@@ -297,6 +316,12 @@ const el = {
   exportFilePaths: document.getElementById('export-file-paths'),
   copySentencesBtn: document.getElementById('copy-sentences-btn'),
   copyWordsBtn: document.getElementById('copy-words-btn'),
+  newScenarioToggleBtn: document.getElementById('new-scenario-toggle-btn'),
+  newScenarioForm: document.getElementById('new-scenario-form'),
+  newScenarioDescription: document.getElementById('new-scenario-description'),
+  newScenarioLanguage: document.getElementById('new-scenario-language'),
+  newScenarioGenerateBtn: document.getElementById('new-scenario-generate-btn'),
+  newScenarioStatus: document.getElementById('new-scenario-status'),
 };
 
 function showError(msg) {
@@ -333,6 +358,41 @@ async function loadScenarios() {
     opt.value = key;
     opt.textContent = `${key} — ${desc}`;
     el.scenarioSelect.appendChild(opt);
+  }
+}
+
+function toggleNewScenarioForm() {
+  const visible = el.newScenarioForm.style.display !== 'none';
+  el.newScenarioForm.style.display = visible ? 'none' : 'block';
+  el.newScenarioToggleBtn.textContent = visible ? '+ 展开' : '− 收起';
+}
+
+async function generateScenario() {
+  clearError();
+  const description = el.newScenarioDescription.value.trim();
+  if (!description) {
+    el.newScenarioStatus.textContent = '请先输入场景描述。';
+    return;
+  }
+  el.newScenarioGenerateBtn.disabled = true;
+  el.newScenarioStatus.textContent = '生成中，可能要几秒…';
+  try {
+    const res = await fetch('/scenarios/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ description, language: el.newScenarioLanguage.value }),
+    });
+    if (!res.ok) throw new Error((await res.json()).detail || res.statusText);
+    const data = await res.json();
+    await loadScenarios();
+    el.scenarioSelect.value = data.key;
+    el.newScenarioDescription.value = '';
+    el.newScenarioStatus.textContent = '生成成功，已经加进上面的场景下拉框并选中了。';
+  } catch (e) {
+    showError('生成场景失败：' + e.message);
+    el.newScenarioStatus.textContent = '';
+  } finally {
+    el.newScenarioGenerateBtn.disabled = false;
   }
 }
 
@@ -537,6 +597,8 @@ el.exportFrBtn.addEventListener('click', () => exportLanguage('fr'));
 el.exportEnBtn.addEventListener('click', () => exportLanguage('en'));
 el.copySentencesBtn.addEventListener('click', () => copyTextarea(el.exportSentences, el.copySentencesBtn));
 el.copyWordsBtn.addEventListener('click', () => copyTextarea(el.exportWords, el.copyWordsBtn));
+el.newScenarioToggleBtn.addEventListener('click', toggleNewScenarioForm);
+el.newScenarioGenerateBtn.addEventListener('click', generateScenario);
 
 loadScenarios().catch((e) => showError('加载场景失败：' + e.message));
 </script>

@@ -57,6 +57,23 @@ Agent 做口语演练 + 演练后诊断，把结果导出给 Anki 插件 langhel
   链接。用 claude-in-chrome 全链路验证过：插一条测试生词 → 页面上点删除 →
   确认按钮消失且 `/records/fr` 里真的查不到了（不是只有 UI 上看着删了）→ 切语言 tab
   也验证过读数正确。
+- **场景卡自动生成已实现**（这个功能一直记在"已推迟的增量想法"里，现在做完了，
+  那个小节整个删掉了）：`langpractice/scenario_gen.py::generate_persona_card(llm,
+  description, language)`——用户给一段自由中文描述，LLM 按 persona_template.md
+  的字段结构填充生成 `PersonaCard`，`key` 自动生成 `custom_` 前缀 + 短 uuid。
+  `PersonaCard` 挪到了 `models.py`（原来在 `personas.py`，为了不让 `db.py` 反过来
+  import `personas.py` 成环）。存进 SQLite 的新 `scenarios` 表（`db.py` 的
+  `insert_scenario`/`fetch_scenario`/`fetch_all_scenarios`/`delete_scenario`）。
+  `personas.get_scenario(conn, key)` / `list_all_scenario_descriptions(conn)`
+  把内置场景（`BUILTIN_SCENARIOS` 内存 dict）和自动生成的场景（DB）合并起来用，
+  `app.py` 的 `/scenarios` 和 `voice_bot.py` 的 `_resolve_scenario()` 都走这两个
+  函数，不用分别处理两种来源。前端主页加了"新建场景（AI 自动生成）"折叠面板。
+  用真实 Groq API + claude-in-chrome 全链路验证过两次（不同场景描述、不同语言），
+  生成的角色卡内容合理、`get_scenario` 能正确查到、`render_persona_prompt` 渲染
+  干净无残留占位符——测试用的场景生成完手动删掉了，没留在库里。
+  **场景卡目前没有删除入口**（DB 层 `delete_scenario` 有了，UI 没接）——如果生成的
+  场景想清理，现在只能像我测试时那样直接调 Python，之后可以补个删除按钮，但这次
+  没人要求，没做。
 - 改动历史看 `git log`，这里不重复维护——已知的非显而易见的坑记在下面「实现踩坑记录」。
 
 ## 技术栈
@@ -177,16 +194,6 @@ agent 内部额外字段：`language` `mastery` `last_practiced`（导出病句/
   功能，验证到"页面加载正常、JS 挂载正常、非权限部分的接口都能调通"就是自动化能做到的
   上限，语音/剪贴板这类需要真实用户手势的部分交给用户自己点一下确认，不要在自动化里
   反复重试。
-
-## 已推迟的增量想法（别忘）
-
-- **场景卡自动生成**：用户给一段自由描述，LLM 按 persona_template.md 的字段
-  （role_identity / emotional_state / speaking_style / hidden_motivation /
-  scenario_description / difficulty_level / target_language）自动填充生成新场景卡，
-  免得每个场景都要手写。技术上是一次新的结构化 LLM 调用（跟 debrief 同套路），
-  但需要落地存储（`scenarios` 表或 JSON 文件）才能复用，超出一期最小范围。
-  一期先用内置场景把闭环跑通，但 `personas.py` 要设计成"加场景 = 加一条结构化数据"，
-  为这个功能预留口子，不要写死 if/else。
 
 ## 开发流程约定
 

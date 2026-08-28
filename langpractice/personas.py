@@ -1,25 +1,15 @@
-from dataclasses import dataclass
+import sqlite3
 from pathlib import Path
+
+from . import db
+from .models import PersonaCard
 
 _TEMPLATE_PATH = Path(__file__).resolve().parent.parent / "prompts" / "persona_template.md"
 
 
-@dataclass
-class PersonaCard:
-    key: str
-    language: str  # 内部语言码，"en" | "fr"（对齐 SUPPORTED_LANGUAGES）
-    target_language: str  # 模板里展示给 LLM 的语言名，如 "French" / "English"
-    role_identity: str
-    emotional_state: str
-    speaking_style: str
-    hidden_motivation: str
-    scenario_description: str
-    difficulty_level: str
-
-
-# 加新场景 = 在这里加一条 PersonaCard，不用碰其它逻辑。
-# 未来"场景卡自动生成"功能（见 CLAUDE.md「已推迟的增量想法」）：LLM 按同样字段填充产出
-# PersonaCard，再塞进这个 dict（或换成持久化存储）即可接上，不需要改 render_persona_prompt。
+# 加新内置场景 = 在这里加一条 PersonaCard，不用碰其它逻辑。
+# 场景卡自动生成的场景（见 scenario_gen.py）存在 SQLite 的 scenarios 表，不在这个 dict
+# 里——get_scenario()/list_all_scenario_descriptions() 会把两边合并起来用。
 BUILTIN_SCENARIOS: dict[str, PersonaCard] = {
     "clinic_fr": PersonaCard(
         key="clinic_fr",
@@ -80,3 +70,19 @@ def render_persona_prompt(card: PersonaCard, induction_targets: str = "") -> str
     for key, value in replacements.items():
         body = body.replace("{{" + key + "}}", value)
     return body
+
+
+def get_scenario(conn: sqlite3.Connection, key: str) -> PersonaCard | None:
+    """内置场景优先查内存 dict，查不到再查 scenarios 表（自动生成的场景）。"""
+    card = BUILTIN_SCENARIOS.get(key)
+    if card is not None:
+        return card
+    return db.fetch_scenario(conn, key)
+
+
+def list_all_scenario_descriptions(conn: sqlite3.Connection) -> dict[str, str]:
+    """给场景下拉框用：内置 + 自动生成的场景合并成一个 {key: 场景描述}。"""
+    result = {key: card.scenario_description for key, card in BUILTIN_SCENARIOS.items()}
+    for card in db.fetch_all_scenarios(conn):
+        result[card.key] = card.scenario_description
+    return result

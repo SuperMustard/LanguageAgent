@@ -48,7 +48,8 @@ from .induction import (
     review_induction_usage,
 )
 from .llm.groq_client import GroqLLMClient
-from .personas import BUILTIN_SCENARIOS, PersonaCard, render_persona_prompt
+from .models import PersonaCard
+from .personas import get_scenario, render_persona_prompt
 
 load_dotenv(override=True)
 
@@ -78,7 +79,11 @@ def _now_iso() -> str:
 def _resolve_scenario(runner_args: RunnerArguments) -> PersonaCard:
     body = runner_args.body or {}
     scenario_key = body.get("scenario", "clinic_fr")
-    card = BUILTIN_SCENARIOS.get(scenario_key)
+    conn = db.connect()
+    try:
+        card = get_scenario(conn, scenario_key)
+    finally:
+        conn.close()
     if card is None:
         raise ValueError(f"unknown scenario: {scenario_key}")
     return card

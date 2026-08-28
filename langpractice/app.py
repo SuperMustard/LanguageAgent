@@ -1,3 +1,4 @@
+import json
 import os
 import threading
 import time
@@ -6,16 +7,28 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 
-from . import db, export
-from .config import SUPPORTED_LANGUAGES
-from .personas import BUILTIN_SCENARIOS
+from . import db, export, personas, scenario_gen
+from .config import GROQ_API_KEY, GROQ_MODEL, SUPPORTED_LANGUAGES
+from .llm.groq_client import GroqLLMClient
 
 # 语音演练本身（角色扮演 + Debrief + 存库）现在全在 langpractice/voice_bot.py 里，
 # 走 Pipecat 全双工 pipeline，是独立进程（默认端口 7860）。这个 app（端口 8000）只管
-# 页面、场景列表、导出、退出——不再自己跑 LLM/STT/TTS。
+# 页面、场景列表（含自动生成）、导出、退出——不再自己跑语音，但场景生成是一次性文字
+# LLM 调用，跟语音 pipeline 无关，就近放在这个进程里。
 
 app = FastAPI(title="LanguageAgent — 口语演练 Agent（页面 + 场景 + 导出）")
+
+
+def _build_scenario_llm():
+    # 没配 GROQ_API_KEY 时留空——只有 /scenarios/generate 会用到它，不阻塞其它功能。
+    if not GROQ_API_KEY:
+        return None
+    return GroqLLMClient(api_key=GROQ_API_KEY, model=GROQ_MODEL)
+
+
+_scenario_llm = _build_scenario_llm()
 
 _WEB_DIR = Path(__file__).resolve().parent.parent / "web"
 _INDEX_HTML_PATH = _WEB_DIR / "index.html"
@@ -46,9 +59,41 @@ def shutdown() -> dict:
     return {"status": "shutting down"}
 
 
+class GenerateScenarioRequest(BaseModel):
+    description: str
+    language: str
+
+
 @app.get("/scenarios")
 def list_scenarios() -> dict[str, str]:
-    return {key: card.scenario_description for key, card in BUILTIN_SCENARIOS.items()}
+    conn = db.connect()
+    try:
+        return personas.list_all_scenario_descriptions(conn)
+    finally:
+        conn.close()
+
+
+@app.post("/scenarios/generate")
+def generate_scenario(req: GenerateScenarioRequest) -> dict:
+    if _scenario_llm is None:
+        raise HTTPException(503, "GROQ_API_KEY 未设置，场景生成不可用")
+    if req.language not in SUPPORTED_LANGUAGES:
+        raise HTTPException(400, f"unsupported language: {req.language}")
+    if not req.description.strip():
+        raise HTTPException(400, "场景描述不能为空")
+
+    try:
+        card = scenario_gen.generate_persona_card(_scenario_llm, req.description, req.language)
+    except (ValueError, KeyError, json.JSONDecodeError) as e:
+        raise HTTPException(502, f"场景生成失败：{e}") from e
+
+    conn = db.connect()
+    try:
+        db.insert_scenario(conn, card)
+    finally:
+        conn.close()
+
+    return {"key": card.key, "description": card.scenario_description}
 
 
 @app.delete("/expressions/{expression_id}")

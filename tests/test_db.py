@@ -1,5 +1,5 @@
 from langpractice import db
-from langpractice.models import Expression, Word
+from langpractice.models import Expression, PersonaCard, Word
 
 
 def test_insert_and_fetch_expressions_roundtrip():
@@ -96,3 +96,56 @@ def test_delete_word_removes_row_and_reports_success():
 def test_delete_word_missing_id_returns_false():
     conn = db.connect(":memory:")
     assert db.delete_word(conn, 9999) is False
+
+
+def _scenario_card(**overrides):
+    base = dict(
+        key="custom_abc123",
+        language="fr",
+        target_language="French",
+        role_identity="一位护士",
+        emotional_state="耐心但有点忙",
+        speaking_style="简洁",
+        hidden_motivation="想尽快安抚患者",
+        scenario_description="患者拒绝打针。",
+        difficulty_level="中级",
+    )
+    base.update(overrides)
+    return PersonaCard(**base)
+
+
+def test_insert_and_fetch_scenario_roundtrip():
+    conn = db.connect(":memory:")
+    card = _scenario_card()
+    db.insert_scenario(conn, card)
+
+    fetched = db.fetch_scenario(conn, "custom_abc123")
+    assert fetched is not None
+    assert fetched.key == card.key
+    assert fetched.role_identity == card.role_identity
+    assert fetched.scenario_description == card.scenario_description
+
+
+def test_fetch_scenario_missing_key_returns_none():
+    conn = db.connect(":memory:")
+    assert db.fetch_scenario(conn, "does_not_exist") is None
+
+
+def test_fetch_all_scenarios_returns_every_row():
+    conn = db.connect(":memory:")
+    db.insert_scenario(conn, _scenario_card(key="custom_a"))
+    db.insert_scenario(conn, _scenario_card(key="custom_b"))
+    scenarios = db.fetch_all_scenarios(conn)
+    assert {s.key for s in scenarios} == {"custom_a", "custom_b"}
+
+
+def test_delete_scenario_removes_row_and_reports_success():
+    conn = db.connect(":memory:")
+    db.insert_scenario(conn, _scenario_card(key="custom_a"))
+    assert db.delete_scenario(conn, "custom_a") is True
+    assert db.fetch_scenario(conn, "custom_a") is None
+
+
+def test_delete_scenario_missing_key_returns_false():
+    conn = db.connect(":memory:")
+    assert db.delete_scenario(conn, "nope") is False
