@@ -25,7 +25,9 @@
 - 双击项目根目录的 `run.bat`，或桌面上的 "LanguageAgent" 快捷方式——会自动启动后端服务并
   打开浏览器到 `http://127.0.0.1:8000/`。
 - 用完直接关掉那个跳出来的黑色命令行窗口即可停止服务（窗口标题是
-  "LanguageAgent server (close this window to stop)"）。
+  "LanguageAgent server (close this window to stop)"），或者直接点网页里的"退出"按钮——
+  会停掉后端服务，标签页能不能自动关取决于浏览器（脚本打开的页面才能自己关，多数情况下
+  需要你手动关标签页，页面会提示）。
 - 前提：`.env` 里已经填好 `GROQ_API_KEY`（必需）和 `AZURE_SPEECH_KEY` / `AZURE_SPEECH_REGION`
   （没填也能跑，TTS 会退回占位提示音）。
 

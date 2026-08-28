@@ -20,10 +20,12 @@ Agent 做口语演练 + 演练后诊断，把结果导出给 Anki 插件 langhel
 - **最薄前端单页已做完**：`web/index.html`，FastAPI 在 `GET /` 直接serve（`langpractice/app.py`
   的 `index()`）。选场景 → 开始演练（自动放开场语音）→ 麦克风按钮录音/发送 → 对话气泡 +
   自动放 AI 语音回复 → 结束演练渲染 Debrief 卡片（病句 zh/错句删除线/正确版/error_note/pattern
-  + 生词 chips）。用 claude-in-chrome 在真实浏览器里点过一遍，开场语音真实播放（8.6s，
-  不是占位音效），debrief 正确渲染，无 console 报错。麦克风录音本身需要真人声音，
-  没在浏览器自动化里测，需要你自己点一下 🎤 试。
-- 已有 git commit：闭环+语音层、TTS 舞台指示修复、这次的前端单页。
+  + 生词 chips）→ 退出按钮（调 `POST /shutdown`，`os._exit` 关进程，本地单人工具不用优雅关闭）。
+  用 claude-in-chrome 在真实浏览器里点过一遍，开场语音真实播放，debrief 正确渲染，无 console
+  报错，窄窗口下也验证过不横向溢出。麦克风录音本身需要真人声音，没在浏览器自动化里测过。
+- **日常启动不用命令行**：双击 `run.bat`（或桌面 "LanguageAgent" 快捷方式）——起后端 + 自动开
+  浏览器；关掉跳出来的命令行窗口就是停服务。细节见 README「日常使用」。
+- 改动历史看 `git log`，这里不重复维护——已知的非显而易见的坑记在下面「实现踩坑记录」。
 
 ## 技术栈
 
