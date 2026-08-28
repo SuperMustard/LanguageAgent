@@ -88,6 +88,13 @@ agent 内部额外字段：`language` `mastery` `last_practiced`（导出病句/
 
 ## 实现踩坑记录
 
+- **`GroqSTTService` 不传 `language` 会把法语"翻译"成英文，而不是转写原文**：真人测试
+  时发现——说法语，回来的文字是英文，导致角色扮演里答非所问（被当成怪回答，不是被"纠错"，
+  演练铁律没破，但体验很怪）。Whisper 系模型在没有语言提示、音频短/不确定时，有时会走
+  "translate to English" 而不是"transcribe in source language"这条路，这是已知行为，
+  不是我们代码的 bug，但必须显式传 `language=` 堵掉。已在 `voice_bot.py` 里按
+  `card.language` 传 `pipecat.transcriptions.language.Language.FR`/`.EN`。
+  以后加新场景语言，记得在 `_STT_LANGUAGE_BY_CODE` 里补一条，别指望自动检测。
 - **Groq 的模型列表会变**：`llama-3.3-70b-versatile` 已经从当前账号的可用模型里下架，
   现在默认用 `openai/gpt-oss-120b`（注意：这是 OpenAI 开源的开放权重模型，Groq 自己
   托管在它的硬件上跑，走的是 `GROQ_API_KEY` 和 Groq 的 endpoint，**不是在调 OpenAI 的
