@@ -14,3 +14,6 @@ __pycache__/
 
 # secrets
 .env
+
+# 前端构建工具（web/pipecat/voice-client.js 是构建产物，提交进库，不用每次现场装 npm 才能跑）
+client/node_modules/

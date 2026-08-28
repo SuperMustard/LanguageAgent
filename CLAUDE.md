@@ -10,44 +10,47 @@ Agent 做口语演练 + 演练后诊断，把结果导出给 Anki 插件 langhel
 
 ## 当前进度
 
-- **task 01（文字版闭环）已完成并跑通**：角色卡对话 → "结束" → Debrief → 存 SQLite →
-  导出 langhelper 格式，用真实 Groq API 验证过（不只是 mock）。
-- **语音层正在从"回合制 REST"迁移到"Pipecat 全双工"**（2026-08 拍板，见 SPEC.md 和技术栈）。
-  旧版（录音按钮 → `session.turn()` 一问一答 → Azure TTS）已跑通验证过，但即将被替换——
-  `session.py` 的回合制逻辑、`app.py` 里的 `/sessions/*/messages` `/voice-messages`
-  `/opening-audio` 这几个端点都是要被 Pipecat pipeline 取代的部分，**遇到就不用再当成
-  目标架构去修**。`debrief.py` `export.py` `db.py` `personas.py` `models.py` 这些
-  跟 transport 无关，全部保留复用。手动测试脚本 `scripts/voice_test.py` 也是旧架构的，
-  Pipecat 跑通后要么改要么废弃。
-- 代码结构见 `langpractice/`：`llm/` `stt/` `tts/` 三层都是 Protocol 接口 + 具体实现，
-  没配对应 API key 时自动退回 Mock，不阻塞开发（`GROQ_API_KEY` 缺失时 LLM 退回
-  `MockLLMClient`、STT 端点直接 503；`AZURE_SPEECH_KEY` 缺失时 TTS 退回占位提示音）。
-- **最薄前端单页已做完**：`web/index.html`，FastAPI 在 `GET /` 直接serve（`langpractice/app.py`
-  的 `index()`）。选场景 → 开始演练（自动放开场语音）→ 麦克风按钮录音/发送 → 对话气泡 +
-  自动放 AI 语音回复 → 结束演练渲染 Debrief 卡片（病句 zh/错句删除线/正确版/error_note/pattern
-  + 生词 chips）→ 导出面板（按语言调 `GET /export/{language}`，文本框 + 一键复制，产品闭环
-  最后一块拼图——不用再回命令行拿导出文件）→ 退出按钮（调 `POST /shutdown`，`os._exit`
-  关进程，本地单人工具不用优雅关闭）。
-  用 claude-in-chrome 在真实浏览器里点过一遍，开场语音真实播放，debrief 正确渲染，导出面板
-  能从库里读到之前多场演练累积的真实数据，无 console 报错，窄窗口下也验证过不横向溢出。
-  麦克风录音需要真人声音，没在自动化里测；一键复制用的 Clipboard API 在自动化环境里会卡在
-  权限弹窗（脚本模拟点击没有真实 user gesture），真人点击不受影响，没能在自动化里测通。
-- **日常启动不用命令行**：双击 `run.bat`（或桌面 "LanguageAgent" 快捷方式）——起后端 + 自动开
-  浏览器；关掉跳出来的命令行窗口就是停服务。细节见 README「日常使用」。
+- **文字/语音闭环 + Pipecat 全双工迁移都已完成**：角色卡对话 → "结束" → Debrief →
+  存 SQLite → 导出 langhelper 格式，全程验证过（真实 API，不是 mock）。
+- **架构是两个本地进程**（2026-08 从"回合制 REST"迁移到 Pipecat 全双工后定型）：
+  - `langpractice/app.py`（端口 8000）：只管页面、场景列表、导出、退出，**不再自己跑
+    任何 LLM/STT/TTS**。`GET /` 直接 serve `web/index.html`；`/pipecat` 挂载
+    `web/pipecat/`（前端构建产物）为静态文件。
+  - `langpractice/voice_bot.py`（端口 7860，Pipecat runner）：真正的语音 pipeline——
+    `transport.input() → GroqSTTService → user_aggregator → GroqLLMService (system
+    prompt = personas.py 渲染的角色卡) → AzureTTSService → transport.output() →
+    assistant_aggregator`，VAD 用 Silero，接在 `LLMContextAggregatorPair` 的
+    `user_params` 里。学习者点"结束演练"时，前端发一个自定义 RTVI 消息
+    `end_session`（`client.sendClientRequest('end_session', {})`），bot 端的
+    `on_client_message` 处理器直接从 `context.get_messages()` 拼 transcript，调
+    **原样复用**的 `debrief.run_debrief()` + `db.insert_expressions/words()`，
+    再用 `rtvi.send_server_response()` 把诊断结果传回前端渲染——debrief/存库/导出
+    完全没被 Pipecat 改动，只是现在从 bot 进程里调用，而不是从 app.py。
+  - `run.bat` 现在起两个进程（各自独立命令行窗口，关窗口=停对应服务）。
+- **前端**：`web/index.html` 的场景选择/对话气泡/Debrief 卡片/导出面板/退出按钮全部保留，
+  只是录音播放那块换成了 `client/` 下的 Vite 项目构建出的 `web/pipecat/voice-client.js`
+  （封装 `@pipecat-ai/client-js` + `@pipecat-ai/small-webrtc-transport`，暴露
+  `window.LangPracticeVoice.VoiceSession`）。**构建产物直接提交进 git**（`client/node_modules/`
+  才 gitignore），改了 `client/src/voice-client.js` 才需要在 `client/` 下 `npm run build`
+  重新生成，日常跑 `run.bat` 不需要装 npm 依赖或跑构建。
+- 用 claude-in-chrome 验证过：页面加载、`window.LangPracticeVoice.VoiceSession` 正确挂载、
+  两个服务器的路由都能访问、`export`/`shutdown` 等非语音功能不受影响。**麦克风授权这一步
+  卡在浏览器自动化里过不去**（见下面实现踩坑记录），实际的语音对话/打断/Debrief 触发
+  需要你自己在真实浏览器里点一遍确认。
 - 改动历史看 `git log`，这里不重复维护——已知的非显而易见的坑记在下面「实现踩坑记录」。
 
 ## 技术栈
 
-- Python + FastAPI 后端
+- Python + FastAPI 后端（`langpractice/app.py`），**不再自己跑语音**
 - SQLite 存储（唯一真相源）
-- **语音编排换成 Pipecat**（2026-08 决定，详见 SPEC.md）：全双工实时 pipeline，VAD 自动
-  断句、支持打断，比之前手写的"录音按钮 + REST 一问一答"更沉浸、更接近真实对话。
-  transport 用 `SmallWebRTCTransport`（本地、不依赖 Daily 云）。
+- **语音编排是 Pipecat**（`langpractice/voice_bot.py`，独立进程）：全双工实时 pipeline，
+  VAD 自动断句、支持打断。transport 用 `SmallWebRTCTransport`（本地、不依赖 Daily 云）。
 - Groq Whisper (STT，Pipecat 里是 VAD 分段不是逐词流式) + Groq（LLM，见下方踩坑记录）
-  + Azure Speech (TTS)
-- 薄前端单页 `web/index.html`：场景选择/Debrief 卡片/导出面板保留，录音播放部分正在换成
-  Pipecat 的 `@pipecat-ai/client-js` + `@pipecat-ai/small-webrtc-transport`；
-  `/docs` 的 Swagger UI 还留着方便测非语音接口
+  + Azure Speech (TTS)——STT/TTS 现在是 Pipecat 自带的 `GroqSTTService`/`AzureTTSService`，
+  我们自己手写的 `stt/` `tts/` 包已经删掉；`llm/groq_client.py` 的 `GroqLLMClient` 还在用，
+  但只用于 Debrief 那一次性非流式调用，跟 Pipecat 的语音 pipeline 是两条独立路径。
+- 前端 `web/index.html` + `client/`（Vite，构建出 `web/pipecat/voice-client.js`）；
+  `/docs` 的 Swagger UI 还留着方便测 `/scenarios` `/export` 这些非语音接口
 
 ## 核心约束（违背即破坏产品）
 
@@ -92,21 +95,52 @@ agent 内部额外字段：`language` `mastery` `last_practiced`（导出病句/
   `qwen/*` 是一个套路）。以后再 404，先用 `client.models.list()` 查当前账号实际有什么，
   别死记模型名。默认值在 `config.py` 的 `GROQ_MODEL` / `GROQ_WHISPER_MODEL`，`.env` 可覆盖。
 - **LLM 生成的 `*叹气*` 这类舞台指示不能直接喂给 TTS**：Azure 会把星号原样念出来
-  （"Asterisk soupire Asterisk"），拿合成音频回灌 Whisper 验证时才发现。已经在
-  `langpractice/tts_text.py::strip_for_speech()` 里处理——只影响送进 TTS 的文本，
-  文字记录（debrief transcript、返回给前端的文字）不受影响，不要在别的地方重复处理。
+  （"Asterisk soupire Asterisk"）。旧的 REST 语音层是在 `tts_text.py::strip_for_speech()`
+  里对完整文本做正则剥离，但 Pipecat 的 TTS 是流式接住 LLM 输出、没有"发去 TTS 前的完整
+  文本"这个钩子——`tts_text.py` 已删除。现在的做法是在 `voice_bot.py` 的
+  `GroqLLMService.Settings(system_instruction=...)` 后面拼一段 `_VOICE_ONLY_SUFFIX`，
+  明确告诉模型"你的话会被朗读，别用星号舞台指示"。没在自动化里验证这个提示词是否总是
+  管用（要真人测），如果发现还是漏，下一步是写个 FrameProcessor 插在 `llm` 和 `tts` 之间
+  做文本过滤，不要退回手动整句处理的老路。
 - **Azure Speech F0（免费档）TTS 硬限制 20 次请求/60 秒，不可调**（微软官方文档，
   https://learn.microsoft.com/azure/ai-services/speech-service/speech-services-quotas-and-limits）。
-  正常演练节奏（几句话一个来回）不太会碰到，但连续测试（尤其是我边测边你也在测）很容易
-  在一分钟内攒够 20 次触发 429。已在 `AzureTTSClient.synthesize()` 里加了 429 重试退避
-  （读 `Retry-After` header，没有就退避 5 秒，最多重试 3 次）。真要更高吞吐得升级到 S0
-  付费档——不要误以为是代码 bug 去瞎排查。
-- **Groq 免费档也会 429**：各模型有各自的 RPM/RPD/TPM 上限（比如目前默认的
-  `openai/gpt-oss-120b` 是 30 RPM），实际数字会变，账号真实限额去
-  `console.groq.com/settings/limits` 查，别死记数字。`groq` 这个 SDK 自带 429 重试
-  （认 `Retry-After` header），但默认只重试 2 次——已经在 `GroqLLMClient` 和
-  `GroqWhisperSTT` 的构造函数里把 `max_retries` 调到 5（见对应文件），跟 Azure 那个是
-  同一类问题：正常演练节奏不太会碰，连续测试容易撞。
+  这个限制本身没变，但我们自己手写的 429 重试代码（`AzureTTSClient`）已经随旧 REST 语音层
+  删掉了——现在 TTS 走的是 Pipecat 的 `AzureTTSService`，429 出现时得看 Pipecat 自己的重试/
+  错误处理行为，还没专门验证过。真撞上了先查 Pipecat 这块的行为，别凭空猜。
+- **Groq 免费档也会 429**：各模型有各自的 RPM/RPD/TPM 上限，实际数字会变，账号真实限额去
+  `console.groq.com/settings/limits` 查，别死记数字。`langpractice/llm/groq_client.py`
+  的 `GroqLLMClient`（Debrief 用）构造函数里把 SDK 默认的 `max_retries` 从 2 调到了 5；
+  Pipecat 的 `GroqSTTService`/`GroqLLMService`（语音 pipeline 用）走的是 Pipecat 自己的
+  重试逻辑，没有额外调过参数。
+- **Pipecat 版本快、API 会变，遇到不确定的用法别凭记忆猜，用 `pipecat init` 现场生成一个
+  参考项目**：`pipecat.exe init --name ref -t smallwebrtc -m cascade --stt groq_stt
+  --llm groq_llm --tts azure_tts --client-framework vanilla --client-server vite
+  --no-deploy-to-cloud`（跑在装了 `pipecat-ai[cli]` 的 venv 里）。这次就是靠这个才搞清楚
+  `PipelineWorker`/`WorkerRunner`（不是 doc 里较老的 `PipelineTask`/`PipelineRunner`）、
+  VAD 挂在 `LLMContextAggregatorPair` 的 `user_params` 而不是单独的 processor、
+  `GroqLLMService.Settings(system_instruction=...)` 而不是塞 context 消息、以及
+  `client.sendClientRequest(type, data)` ↔ 服务端 `on_client_message` +
+  `rtvi.send_server_response()` 这套自定义消息往返的确切用法。CLI 在 Windows 控制台下
+  first-run 会因为 GBK 编码画勾字符崩掉，加 `PYTHONUTF8=1 PYTHONIOENCODING=utf-8` 前缀
+  就好——这跟本文件其它地方提过的 Windows 控制台编码问题是同一类坑。
+- **Pipecat 的 bot runner 是它自己的独立 FastAPI 服务器**（默认端口 7860，`pipecat.runner.
+  run.main()` 起的），不会自动并进你现有的 FastAPI app。这个项目就是两个进程
+  （`app.py` 端口 8000 管页面，`voice_bot.py` 端口 7860 管语音），`run.bat` 分别起。
+  别想着"想办法揉成一个进程"去折腾，这是框架的标准形态。
+- **Pipecat 客户端（`@pipecat-ai/client-js` + `@pipecat-ai/small-webrtc-transport`）
+  没有免构建的 CDN 用法**，官方文档也没给，实测确认必须过 npm + Vite 构建
+  （`client/` 下 `npm install && npm run build`，`vite.config.js` 用 `build.lib`
+  配置输出成单个固定文件名 `web/pipecat/voice-client.js`，不然默认会输出带 hash 的
+  多个 chunk 文件不好引用）。构建产物直接提交进 git，用户日常跑 `run.bat` 不需要装 Node。
+- **浏览器自动化（claude-in-chrome）过不了麦克风权限弹窗，也过不了 Clipboard
+  写入权限弹窗**：脚本触发的 `getUserMedia()`/`navigator.clipboard.writeText()`
+  没有真实 user gesture，Chrome 会弹原生权限对话框卡住整个自动化会话（截图/JS 执行
+  全部超时），没有人能点"允许"。表现是卡在某个中间状态不再前进（比如"Initializing
+  devices..."之后没日志了），服务端日志里完全没收到后续请求——这是判断"卡在权限弹窗"
+  还是"代码真的有 bug"的关键区分方法：查对应服务的日志有没有收到预期请求。遇到这类
+  功能，验证到"页面加载正常、JS 挂载正常、非权限部分的接口都能调通"就是自动化能做到的
+  上限，语音/剪贴板这类需要真实用户手势的部分交给用户自己点一下确认，不要在自动化里
+  反复重试。
 
 ## 已推迟的增量想法（别忘）
 

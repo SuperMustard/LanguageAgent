@@ -20,22 +20,27 @@
 
 ## 日常使用（不用命令行）
 
-文字版闭环 + 语音层 + 最薄前端都已经跑通（见 CLAUDE.md「当前进度」）。日常练习不需要再碰命令行：
+文字/语音闭环、Pipecat 全双工语音、最薄前端都已经跑通（见 CLAUDE.md「当前进度」）。
+日常练习不需要再碰命令行：
 
-- 双击项目根目录的 `run.bat`，或桌面上的 "LanguageAgent" 快捷方式——会自动启动后端服务并
-  打开浏览器到 `http://127.0.0.1:8000/`。
-- 用完直接关掉那个跳出来的黑色命令行窗口即可停止服务（窗口标题是
-  "LanguageAgent server (close this window to stop)"），或者直接点网页里的"退出"按钮——
-  会停掉后端服务，标签页能不能自动关取决于浏览器（脚本打开的页面才能自己关，多数情况下
-  需要你手动关标签页，页面会提示）。
-- 前提：`.env` 里已经填好 `GROQ_API_KEY`（必需）和 `AZURE_SPEECH_KEY` / `AZURE_SPEECH_REGION`
-  （没填也能跑，TTS 会退回占位提示音）。
+- 双击项目根目录的 `run.bat`，或桌面上的 "LanguageAgent" 快捷方式——会启动两个后端进程
+  （页面/场景/导出用的端口 8000，Pipecat 语音 bot 用的端口 7860），再自动打开浏览器到
+  `http://127.0.0.1:8000/`。
+- 用完关掉那两个跳出来的黑色命令行窗口（标题里都写了 "close this window to stop"）即可
+  停止对应服务；网页里的"退出"按钮只会停掉端口 8000 那个，语音 bot（端口 7860）那个窗口
+  还得自己关。
+- 前提：`.env` 里已经填好 `GROQ_API_KEY`（必需，STT+LLM 都要用）和 `AZURE_SPEECH_KEY` /
+  `AZURE_SPEECH_REGION`（TTS 用，也是必需——不像旧版还有占位提示音兜底，Pipecat 语音层
+  没配 Azure key 直接连不上）。
+- 前端语音功能改了代码后要重新构建：`cd client && npm install && npm run build`
+  （构建产物 `web/pipecat/voice-client.js` 已提交进 git，日常使用不用装 Node）。
 
 ## 开发顺序
 
-1. **文字版核心闭环**（task 01）：对话 → 结束 → Debrief → 存库 → 导出
-2. **加语音层**：Groq Whisper STT + Azure TTS，包在演练回合外
-3. **加口语诱导**（二期）：检索旧表达注入角色卡隐藏目标
+1. **文字版核心闭环**（task 01）：对话 → 结束 → Debrief → 存库 → 导出 ✅
+2. **加语音层**：一开始是 Groq Whisper STT + Azure TTS 包在回合制 REST 外面，后来
+   （2026-08）换成 Pipecat 全双工实时 pipeline，见 SPEC.md 和 CLAUDE.md ✅
+3. **加口语诱导**（二期）：检索旧表达注入角色卡隐藏目标——还没做
 
 ## 记住三条铁律
 
