@@ -18,6 +18,17 @@
    先提 SQLite schema 和文件结构给你确认，确认后再实现
 4. 每完成一刀，跑通 + 单元测试，再进下一刀
 
+## 日常使用（不用命令行）
+
+文字版闭环 + 语音层 + 最薄前端都已经跑通（见 CLAUDE.md「当前进度」）。日常练习不需要再碰命令行：
+
+- 双击项目根目录的 `run.bat`，或桌面上的 "LanguageAgent" 快捷方式——会自动启动后端服务并
+  打开浏览器到 `http://127.0.0.1:8000/`。
+- 用完直接关掉那个跳出来的黑色命令行窗口即可停止服务（窗口标题是
+  "LanguageAgent server (close this window to stop)"）。
+- 前提：`.env` 里已经填好 `GROQ_API_KEY`（必需）和 `AZURE_SPEECH_KEY` / `AZURE_SPEECH_REGION`
+  （没填也能跑，TTS 会退回占位提示音）。
+
 ## 开发顺序
 
 1. **文字版核心闭环**（task 01）：对话 → 结束 → Debrief → 存库 → 导出
