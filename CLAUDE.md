@@ -49,6 +49,14 @@ Agent 做口语演练 + 演练后诊断，把结果导出给 Anki 插件 langhel
     `last_practiced`（除了没动的情况）——这样"最久没碰"才会真的轮换，不会同一条卡死。
   - 都用真实 Groq API 验证过（插测试行 → 编两段 transcript，一段用对了一段完全没用 →
     确认 `used_correctly`/`not_used` 判断对了、mastery 真的从 0 变 1 → 删测试行）。
+- **历史记录管理页已做完**：`web/history.html`（`GET /history` serve），独立页面，
+  跟主练习页不共享 JS，只共享 CSS 变量调色板。`GET /records/{language}` 返回带
+  id/mastery/last_practiced 的完整记录（`/export/{language}` 那个是给 langhelper 吃的
+  干净格式，特意保持不带这些字段，两个端点分工不同，别混）。删除按钮复用已有的
+  `DELETE /expressions/{id}` `DELETE /words/{id}`。主页 h1 旁边加了个"历史记录管理 →"
+  链接。用 claude-in-chrome 全链路验证过：插一条测试生词 → 页面上点删除 →
+  确认按钮消失且 `/records/fr` 里真的查不到了（不是只有 UI 上看着删了）→ 切语言 tab
+  也验证过读数正确。
 - 改动历史看 `git log`，这里不重复维护——已知的非显而易见的坑记在下面「实现踩坑记录」。
 
 ## 技术栈

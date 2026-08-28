@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>历史记录管理</title>
+<style>
+  :root {
+    --bg: #f6f5f2;
+    --panel: #ffffff;
+    --border: #e2ded6;
+    --text: #2a2723;
+    --muted: #86807a;
+    --accent: #b5553a;
+    --accent-dark: #8f4230;
+    --ai-bubble: #f1e8dd;
+    --error: #b3392c;
+    --error-bg: #fbe9e6;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    overflow-x: hidden;
+  }
+  .wrap {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 24px 16px 80px;
+  }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  h2 { font-size: 15px; margin: 0 0 10px; }
+  .sub { color: var(--muted); font-size: 13px; margin-bottom: 20px; }
+  .back-link {
+    display: inline-block;
+    font-size: 13px;
+    color: var(--accent);
+    text-decoration: none;
+    margin-bottom: 12px;
+  }
+  .back-link:hover { text-decoration: underline; }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  button {
+    font-size: 14px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: #fff;
+    color: var(--text);
+    cursor: pointer;
+  }
+  .lang-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button:disabled { opacity: 0.45; cursor: not-allowed; }
+  #status { font-size: 13px; color: var(--muted); min-height: 18px; margin-top: 8px; }
+  #error {
+    display: none;
+    background: var(--error-bg);
+    color: var(--error);
+    border: 1px solid var(--error);
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-size: 13px;
+    margin-bottom: 16px;
+  }
+  .record {
+    position: relative;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 36px 12px 12px;
+    margin-bottom: 10px;
+    font-size: 13px;
+    overflow-wrap: break-word;
+  }
+  .record.removed { opacity: 0.4; }
+  .record-delete-btn {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    line-height: 1;
+    border-radius: 999px;
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .record-delete-btn:hover { color: var(--error); border-color: var(--error); }
+  .record .zh { font-weight: 600; margin-bottom: 6px; }
+  .record .wrong { color: var(--error); text-decoration: line-through; }
+  .record .correct { color: #2f7a4f; font-weight: 600; }
+  .record .note { color: var(--muted); margin-top: 6px; }
+  .record .word-line { font-weight: 600; }
+  .record .meaning { color: var(--muted); }
+  .meta {
+    display: flex;
+    gap: 10px;
+    margin-top: 8px;
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .meta .mastery-badge {
+    background: var(--ai-bubble);
+    padding: 2px 8px;
+    border-radius: 999px;
+  }
+  .empty { color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="back-link" href="/">← 返回演练</a>
+  <h1>历史记录管理</h1>
+  <div class="sub">所有存库的病句诊断和生词，不限于某一场演练。可以看掌握度/最后练习时间，也能单条删除。</div>
+
+  <div id="error"></div>
+
+  <div class="panel">
+    <div class="row">
+      <button id="lang-fr-btn" class="lang-btn active">法语 (fr)</button>
+      <button id="lang-en-btn" class="lang-btn">英语 (en)</button>
+      <button id="refresh-btn">刷新</button>
+    </div>
+    <div id="status"></div>
+  </div>
+
+  <div class="panel">
+    <h2>病句诊断</h2>
+    <div id="expressions-list"></div>
+  </div>
+
+  <div class="panel">
+    <h2>生词</h2>
+    <div id="words-list"></div>
+  </div>
+</div>
+
+<script>
+const state = { language: 'fr' };
+
+const el = {
+  langFrBtn: document.getElementById('lang-fr-btn'),
+  langEnBtn: document.getElementById('lang-en-btn'),
+  refreshBtn: document.getElementById('refresh-btn'),
+  status: document.getElementById('status'),
+  error: document.getElementById('error'),
+  expressionsList: document.getElementById('expressions-list'),
+  wordsList: document.getElementById('words-list'),
+};
+
+function showError(msg) {
+  el.error.textContent = msg;
+  el.error.style.display = 'block';
+}
+
+function clearError() {
+  el.error.style.display = 'none';
+}
+
+function setStatus(msg) {
+  el.status.textContent = msg;
+}
+
+function formatTime(iso) {
+  try {
+    return new Date(iso).toLocaleString();
+  } catch (e) {
+    return iso;
+  }
+}
+
+async function deleteRecord(kind, id, container) {
+  const btn = container.querySelector('button');
+  if (btn) btn.disabled = true;
+  try {
+    const res = await fetch(`/${kind}/${id}`, { method: 'DELETE' });
+    if (!res.ok) throw new Error((await res.json()).detail || res.statusText);
+    container.classList.add('removed');
+    if (btn) btn.remove();
+  } catch (e) {
+    showError('删除失败：' + e.message);
+    if (btn) btn.disabled = false;
+  }
+}
+
+function renderExpressions(expressions) {
+  el.expressionsList.innerHTML = '';
+  if (expressions.length === 0) {
+    el.expressionsList.innerHTML = '<div class="empty">这门语言目前没有存库的病句诊断。</div>';
+    return;
+  }
+  for (const e of expressions) {
+    const card = document.createElement('div');
+    card.className = 'record';
+    card.innerHTML = `
+      <div class="zh">${e.zh}</div>
+      <div class="wrong">${e.en_wrong}</div>
+      <div class="correct">${e.en_correct}</div>
+      <div class="note">${e.error_note}</div>
+      <div class="meta">
+        <span class="mastery-badge">掌握度 ${e.mastery}</span>
+        <span>最后练习：${formatTime(e.last_practiced)}</span>
+      </div>
+    `;
+    const deleteBtn = document.createElement('button');
+    deleteBtn.type = 'button';
+    deleteBtn.className = 'record-delete-btn';
+    deleteBtn.title = '删除这条记录';
+    deleteBtn.textContent = '✕';
+    deleteBtn.addEventListener('click', () => deleteRecord('expressions', e.id, card));
+    card.appendChild(deleteBtn);
+    el.expressionsList.appendChild(card);
+  }
+}
+
+function renderWords(words) {
+  el.wordsList.innerHTML = '';
+  if (words.length === 0) {
+    el.wordsList.innerHTML = '<div class="empty">这门语言目前没有存库的生词。</div>';
+    return;
+  }
+  for (const w of words) {
+    const card = document.createElement('div');
+    card.className = 'record';
+    card.innerHTML = `
+      <div class="word-line">${w.word}${w.meaning ? ` <span class="meaning">｜${w.meaning}</span>` : ''}</div>
+      <div class="meta">
+        <span class="mastery-badge">掌握度 ${w.mastery}</span>
+        <span>最后练习：${formatTime(w.last_practiced)}</span>
+      </div>
+    `;
+    const deleteBtn = document.createElement('button');
+    deleteBtn.type = 'button';
+    deleteBtn.className = 'record-delete-btn';
+    deleteBtn.title = '删除这条记录';
+    deleteBtn.textContent = '✕';
+    deleteBtn.addEventListener('click', () => deleteRecord('words', w.id, card));
+    card.appendChild(deleteBtn);
+    el.wordsList.appendChild(card);
+  }
+}
+
+async function loadRecords() {
+  clearError();
+  setStatus('加载中…');
+  try {
+    const res = await fetch(`/records/${state.language}`);
+    if (!res.ok) throw new Error((await res.json()).detail || res.statusText);
+    const data = await res.json();
+    renderExpressions(data.expressions);
+    renderWords(data.words);
+    setStatus(`共 ${data.expressions.length} 条病句、${data.words.length} 条生词。`);
+  } catch (e) {
+    showError('加载失败：' + e.message);
+    setStatus('');
+  }
+}
+
+function switchLanguage(language) {
+  state.language = language;
+  el.langFrBtn.classList.toggle('active', language === 'fr');
+  el.langEnBtn.classList.toggle('active', language === 'en');
+  loadRecords();
+}
+
+el.langFrBtn.addEventListener('click', () => switchLanguage('fr'));
+el.langEnBtn.addEventListener('click', () => switchLanguage('en'));
+el.refreshBtn.addEventListener('click', loadRecords);
+
+loadRecords();
+</script>
+</body>
+</html>

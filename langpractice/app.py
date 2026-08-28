@@ -19,6 +19,7 @@ app = FastAPI(title="LanguageAgent — 口语演练 Agent（页面 + 场景 + �
 
 _WEB_DIR = Path(__file__).resolve().parent.parent / "web"
 _INDEX_HTML_PATH = _WEB_DIR / "index.html"
+_HISTORY_HTML_PATH = _WEB_DIR / "history.html"
 
 app.mount("/pipecat", StaticFiles(directory=_WEB_DIR / "pipecat"), name="pipecat-client")
 
@@ -26,6 +27,11 @@ app.mount("/pipecat", StaticFiles(directory=_WEB_DIR / "pipecat"), name="pipecat
 @app.get("/", response_class=HTMLResponse)
 def index() -> str:
     return _INDEX_HTML_PATH.read_text(encoding="utf-8")
+
+
+@app.get("/history", response_class=HTMLResponse)
+def history_page() -> str:
+    return _HISTORY_HTML_PATH.read_text(encoding="utf-8")
 
 
 def _delayed_exit() -> None:
@@ -68,6 +74,47 @@ def delete_word(word_id: int) -> dict:
     if not deleted:
         raise HTTPException(404, f"word {word_id} not found")
     return {"status": "deleted"}
+
+
+@app.get("/records/{language}")
+def list_records(language: str) -> dict:
+    """给历史记录管理页用——跟 /export 不同，这里带 id/mastery/last_practiced，
+    因为要能单条删除、看掌握度，不是给 langhelper 吃的干净格式。"""
+    if language not in SUPPORTED_LANGUAGES:
+        raise HTTPException(400, f"unsupported language: {language}")
+
+    conn = db.connect()
+    try:
+        expressions = db.fetch_expressions(conn, language)
+        words = db.fetch_words(conn, language)
+    finally:
+        conn.close()
+
+    return {
+        "expressions": [
+            {
+                "id": e.id,
+                "zh": e.zh,
+                "en_wrong": e.en_wrong,
+                "en_correct": e.en_correct,
+                "error_note": e.error_note,
+                "pattern": e.pattern,
+                "mastery": e.mastery,
+                "last_practiced": e.last_practiced,
+            }
+            for e in expressions
+        ],
+        "words": [
+            {
+                "id": w.id,
+                "word": w.word,
+                "meaning": w.meaning,
+                "mastery": w.mastery,
+                "last_practiced": w.last_practiced,
+            }
+            for w in words
+        ],
+    }
 
 
 @app.get("/export/{language}")
