@@ -88,6 +88,14 @@ agent 内部额外字段：`language` `mastery` `last_practiced`（导出病句/
 
 ## 实现踩坑记录
 
+- **Pipecat runner 的 `/start` 接口，自定义数据必须包在 `"body"` 键里，不能跟
+  `transport`/`createDailyRoom` 平级**：源码见 `pipecat/runner/run.py` 里
+  `_setup_unified_start_route` 的 docstring 和 `active_sessions[session_id] =
+  request_data.get("body", {})`——顶层塞别的字段会被直接丢弃，`runner_args.body`
+  永远拿不到。真实症状：场景切换在 UI 上看着选了，但 bot 端 `_resolve_scenario()`
+  永远落到默认值 `clinic_fr`，因为 `client/src/voice-client.js` 一开始把 `scenario`
+  塞在 `requestData` 顶层。现在 `connect()` 里是 `requestData: {..., body: { scenario
+  } }`。以后往 `/start` 塞任何自定义字段，记得套一层 `body`。
 - **`GroqSTTService` 不传 `language` 会把法语"翻译"成英文，而不是转写原文**：真人测试
   时发现——说法语，回来的文字是英文，导致角色扮演里答非所问（被当成怪回答，不是被"纠错"，
   演练铁律没破，但体验很怪）。Whisper 系模型在没有语言提示、音频短/不确定时，有时会走
