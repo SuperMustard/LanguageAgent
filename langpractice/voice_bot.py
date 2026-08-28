@@ -24,6 +24,7 @@ from pipecat.runner.utils import create_transport
 from pipecat.services.azure.tts import AzureTTSService
 from pipecat.services.groq.llm import GroqLLMService
 from pipecat.services.groq.stt import GroqSTTService
+from pipecat.transcriptions.language import Language
 from pipecat.transports.base_transport import BaseTransport, TransportParams
 from pipecat.workers.runner import WorkerRunner
 
@@ -41,6 +42,7 @@ from .personas import BUILTIN_SCENARIOS, PersonaCard, render_persona_prompt
 load_dotenv(override=True)
 
 _VOICE_BY_LANGUAGE = {"en": "en-US-JennyNeural", "fr": "fr-FR-DeniseNeural"}
+_STT_LANGUAGE_BY_CODE = {"en": Language.EN, "fr": Language.FR}
 
 # Pipecat 的 TTS 是流式拼接 LLM 输出念出来的，不像旧 REST 版能在发去 TTS 前用
 # tts_text.strip_for_speech() 整句过滤星号舞台指示。改成直接在 system prompt 里说清楚。
@@ -77,7 +79,13 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments) -> Non
     card = _resolve_scenario(runner_args)
     logger.info(f"Starting voice bot, scenario={card.key}")
 
-    stt = GroqSTTService(api_key=GROQ_API_KEY, model=GROQ_WHISPER_MODEL)
+    # 不传 language 时 Whisper 有时会"翻译"成英文而不是"转写"原文——尤其是短句、法语这种
+    # 场景，必须显式给语言提示，不能让它自己猜（见 CLAUDE.md 实现踩坑记录）。
+    stt = GroqSTTService(
+        api_key=GROQ_API_KEY,
+        model=GROQ_WHISPER_MODEL,
+        language=_STT_LANGUAGE_BY_CODE.get(card.language, Language.EN),
+    )
     tts = AzureTTSService(
         api_key=AZURE_SPEECH_KEY,
         region=AZURE_SPEECH_REGION,
