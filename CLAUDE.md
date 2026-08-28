@@ -84,6 +84,12 @@ agent 内部额外字段：`language` `mastery` `last_practiced`（导出病句/
   在一分钟内攒够 20 次触发 429。已在 `AzureTTSClient.synthesize()` 里加了 429 重试退避
   （读 `Retry-After` header，没有就退避 5 秒，最多重试 3 次）。真要更高吞吐得升级到 S0
   付费档——不要误以为是代码 bug 去瞎排查。
+- **Groq 免费档也会 429**：各模型有各自的 RPM/RPD/TPM 上限（比如目前默认的
+  `openai/gpt-oss-120b` 是 30 RPM），实际数字会变，账号真实限额去
+  `console.groq.com/settings/limits` 查，别死记数字。`groq` 这个 SDK 自带 429 重试
+  （认 `Retry-After` header），但默认只重试 2 次——已经在 `GroqLLMClient` 和
+  `GroqWhisperSTT` 的构造函数里把 `max_retries` 调到 5（见对应文件），跟 Azure 那个是
+  同一类问题：正常演练节奏不太会碰，连续测试容易撞。
 
 ## 已推迟的增量想法（别忘）
 
