@@ -160,6 +160,27 @@
     font-size: 13px;
   }
   h2 { font-size: 15px; margin: 0 0 10px; }
+  .export-block {
+    margin-top: 12px;
+  }
+  .export-block label {
+    font-size: 12px;
+  }
+  textarea {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    min-height: 110px;
+    margin-top: 6px;
+    font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+    font-size: 12px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text);
+    resize: vertical;
+  }
 </style>
 </head>
 <body>
@@ -190,6 +211,32 @@
     <div id="debrief-words"></div>
   </div>
 
+  <div class="panel">
+    <h2>导出到 langhelper</h2>
+    <div class="sub">导出这门语言目前存库的全部病句/生词，粘进 Anki 的 langhelper 导入对话框。</div>
+    <div class="row">
+      <button id="export-fr-btn">导出法语 (fr)</button>
+      <button id="export-en-btn">导出英语 (en)</button>
+    </div>
+    <div id="export-result" style="display:none">
+      <div class="export-block">
+        <div class="row" style="justify-content:space-between">
+          <label class="sub">病句 JSON（fr_sentences.json / en_sentences.json）</label>
+          <button id="copy-sentences-btn" type="button">复制</button>
+        </div>
+        <textarea id="export-sentences" readonly></textarea>
+      </div>
+      <div class="export-block">
+        <div class="row" style="justify-content:space-between">
+          <label class="sub">生词 txt（fr_words.txt / en_words.txt）</label>
+          <button id="copy-words-btn" type="button">复制</button>
+        </div>
+        <textarea id="export-words" readonly></textarea>
+      </div>
+      <div id="export-file-paths" class="sub"></div>
+    </div>
+  </div>
+
   <audio id="player" style="display:none"></audio>
 </div>
 
@@ -214,6 +261,14 @@ const el = {
   debriefPanel: document.getElementById('debrief-panel'),
   debriefSentences: document.getElementById('debrief-sentences'),
   debriefWords: document.getElementById('debrief-words'),
+  exportFrBtn: document.getElementById('export-fr-btn'),
+  exportEnBtn: document.getElementById('export-en-btn'),
+  exportResult: document.getElementById('export-result'),
+  exportSentences: document.getElementById('export-sentences'),
+  exportWords: document.getElementById('export-words'),
+  exportFilePaths: document.getElementById('export-file-paths'),
+  copySentencesBtn: document.getElementById('copy-sentences-btn'),
+  copyWordsBtn: document.getElementById('copy-words-btn'),
 };
 
 function showError(msg) {
@@ -399,12 +454,42 @@ async function endSession() {
     const data = await res.json();
     renderDebrief(data);
     el.debriefPanel.style.display = 'block';
-    setStatus('演练已结束。数据已存库，可以在后端调用 /export/{language} 导出。');
+    setStatus('演练已结束，数据已存库。想导出给 langhelper 用，见下面的"导出到 langhelper"。');
     state.sessionId = null;
   } catch (e) {
     showError('结束演练失败：' + e.message);
     setStatus('');
   }
+}
+
+async function exportLanguage(language) {
+  clearError();
+  setStatus(`导出 ${language} 中…`);
+  try {
+    const res = await fetch(`/export/${language}`);
+    if (!res.ok) throw new Error((await res.json()).detail || res.statusText);
+    const data = await res.json();
+    el.exportSentences.value = data.sentences_json;
+    el.exportWords.value = data.words_txt;
+    el.exportFilePaths.textContent = `同时已写入磁盘：${data.sentences_file} ／ ${data.words_file}`;
+    el.exportResult.style.display = 'block';
+    setStatus(`已导出 ${language}，可以复制粘进 langhelper 了。`);
+  } catch (e) {
+    showError('导出失败：' + e.message);
+    setStatus('');
+  }
+}
+
+async function copyTextarea(textarea, button) {
+  try {
+    await navigator.clipboard.writeText(textarea.value);
+  } catch (e) {
+    textarea.select();
+    document.execCommand('copy');
+  }
+  const original = button.textContent;
+  button.textContent = '已复制';
+  setTimeout(() => { button.textContent = original; }, 1500);
 }
 
 async function exitApp() {
@@ -430,6 +515,10 @@ el.startBtn.addEventListener('click', startSession);
 el.recordBtn.addEventListener('click', toggleRecording);
 el.endBtn.addEventListener('click', endSession);
 el.exitBtn.addEventListener('click', exitApp);
+el.exportFrBtn.addEventListener('click', () => exportLanguage('fr'));
+el.exportEnBtn.addEventListener('click', () => exportLanguage('en'));
+el.copySentencesBtn.addEventListener('click', () => copyTextarea(el.exportSentences, el.copySentencesBtn));
+el.copyWordsBtn.addEventListener('click', () => copyTextarea(el.exportWords, el.copyWordsBtn));
 
 loadScenarios().catch((e) => showError('加载场景失败：' + e.message));
 </script>
