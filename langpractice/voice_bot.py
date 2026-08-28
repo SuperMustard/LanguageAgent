@@ -41,6 +41,7 @@ from .config import (
     VAD_START_SECS,
     VAD_STOP_SECS,
 )
+from .induction import format_induction_targets, retrieve_induction_targets
 from .llm.groq_client import GroqLLMClient
 from .personas import BUILTIN_SCENARIOS, PersonaCard, render_persona_prompt
 
@@ -92,6 +93,16 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments) -> Non
     card = _resolve_scenario(runner_args)
     logger.info(f"Starting voice bot, scenario={card.key}")
 
+    # 口语侧诱导（二期）：不限定场景，按语言检索旧表达，注入隐藏目标。没有历史记录时
+    # targets 是空列表，render_persona_prompt 自然退化成一期行为（induction_block 留空）。
+    induction_conn = db.connect()
+    try:
+        induction_targets = retrieve_induction_targets(induction_conn, card.language)
+    finally:
+        induction_conn.close()
+    if induction_targets:
+        logger.info(f"Induction targets for this session: {induction_targets}")
+
     # 不传 language 时 Whisper 有时会"翻译"成英文而不是"转写"原文——尤其是短句、法语这种
     # 场景，必须显式给语言提示，不能让它自己猜（见 CLAUDE.md 实现踩坑记录）。
     stt = GroqSTTService(
@@ -110,7 +121,10 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments) -> Non
         api_key=GROQ_API_KEY,
         settings=GroqLLMService.Settings(
             model=GROQ_MODEL,
-            system_instruction=render_persona_prompt(card) + _VOICE_ONLY_SUFFIX,
+            system_instruction=render_persona_prompt(
+                card, induction_targets=format_induction_targets(induction_targets)
+            )
+            + _VOICE_ONLY_SUFFIX,
         ),
     )
 

@@ -51,8 +51,22 @@ def _load_template_body() -> str:
     return template.split("## 模板", 1)[1].split("```", 2)[1].strip()
 
 
-def render_persona_prompt(card: PersonaCard) -> str:
+def _load_induction_block_template() -> str:
+    template = _TEMPLATE_PATH.read_text(encoding="utf-8")
+    section = template.split("## induction_block", 1)[1]
+    return section.split("```", 2)[1].strip()
+
+
+def render_persona_prompt(card: PersonaCard, induction_targets: str = "") -> str:
+    """induction_targets 非空时才注入隐藏引导目标（二期口语侧诱导，见 SPEC）；
+    默认空字符串，行为跟一期完全一样——没有旧表达可诱导时（比如这门语言第一次练）
+    自然退化成空，不用调用方特判。"""
     body = _load_template_body()
+    induction_block = ""
+    if induction_targets:
+        induction_block = _load_induction_block_template().replace(
+            "{{induction_targets}}", induction_targets
+        )
     replacements = {
         "target_language": card.target_language,
         "role_identity": card.role_identity,
@@ -61,7 +75,7 @@ def render_persona_prompt(card: PersonaCard) -> str:
         "hidden_motivation": card.hidden_motivation,
         "scenario_description": card.scenario_description,
         "difficulty_level": card.difficulty_level,
-        "induction_block": "",  # 二期才填，一期留空（见 SPEC）
+        "induction_block": induction_block,
     }
     for key, value in replacements.items():
         body = body.replace("{{" + key + "}}", value)

@@ -37,6 +37,13 @@ Agent 做口语演练 + 演练后诊断，把结果导出给 Anki 插件 langhel
   两个服务器的路由都能访问、`export`/`shutdown` 等非语音功能不受影响。**麦克风授权这一步
   卡在浏览器自动化里过不去**（见下面实现踩坑记录），实际的语音对话/打断/Debrief 触发
   需要你自己在真实浏览器里点一遍确认。
+- **口语侧诱导（二期旗舰功能）已实现**：`langpractice/induction.py`——`run_bot()` 开场
+  前按 `card.language`（不限场景）查 `expressions`/`words` 两张表，按
+  `(mastery, last_practiced)` 升序取最多 2 条最久没碰的旧表达/生词，格式化后注入
+  `personas.py` 的 `induction_block`（模板本来就留了这个槽位，只是一期没填）。
+  真实数据验证过：读到之前测试攒下的 fr 记录，渲染出的 system prompt 里"隐藏引导目标"
+  段落正确出现，格式跟 persona_template.md 定义的一致。掌握度算法还没做，mastery 现在
+  对同语言记录全是 0，排序退化成纯按 last_practiced——这是已知的临时状态，不是 bug。
 - 改动历史看 `git log`，这里不重复维护——已知的非显而易见的坑记在下面「实现踩坑记录」。
 
 ## 技术栈
@@ -58,7 +65,8 @@ Agent 做口语演练 + 演练后诊断，把结果导出给 Anki 插件 langhel
    演练时只演角色；纠错只在用户发出"结束"信号后的 Debrief 阶段发生。
 
 2. **口语诱导的旧表达必须作为隐藏目标注入角色卡**，让 AI 设计语境自然引导用户说出来，
-   **绝不能明着提示或考问**。明示会同时毁掉沉浸感和诱导效果。（二期功能）
+   **绝不能明着提示或考问**。明示会同时毁掉沉浸感和诱导效果。已实现，见
+   `langpractice/induction.py`。
 
 3. **不直接读写 Anki 的数据库**（collection.anki2）。agent 只写自己的 SQLite，
    通过导出文件单向喂给 langhelper。
