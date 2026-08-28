@@ -17,14 +17,20 @@ Agent 做口语演练 + 演练后诊断，把结果导出给 Anki 插件 langhel
 - 代码结构见 `langpractice/`：`llm/` `stt/` `tts/` 三层都是 Protocol 接口 + 具体实现，
   没配对应 API key 时自动退回 Mock，不阻塞开发（`GROQ_API_KEY` 缺失时 LLM 退回
   `MockLLMClient`、STT 端点直接 503；`AZURE_SPEECH_KEY` 缺失时 TTS 退回占位提示音）。
-- 已有两次 git commit：闭环+语音层、以及下面"实现踩坑记录"里的 TTS 舞台指示修复。
+- **最薄前端单页已做完**：`web/index.html`，FastAPI 在 `GET /` 直接serve（`langpractice/app.py`
+  的 `index()`）。选场景 → 开始演练（自动放开场语音）→ 麦克风按钮录音/发送 → 对话气泡 +
+  自动放 AI 语音回复 → 结束演练渲染 Debrief 卡片（病句 zh/错句删除线/正确版/error_note/pattern
+  + 生词 chips）。用 claude-in-chrome 在真实浏览器里点过一遍，开场语音真实播放（8.6s，
+  不是占位音效），debrief 正确渲染，无 console 报错。麦克风录音本身需要真人声音，
+  没在浏览器自动化里测，需要你自己点一下 🎤 试。
+- 已有 git commit：闭环+语音层、TTS 舞台指示修复、这次的前端单页。
 
 ## 技术栈
 
 - Python + FastAPI 后端
 - SQLite 存储（唯一真相源）
 - Groq Whisper (STT) + Groq（LLM，见下方踩坑记录）+ Azure Speech (TTS)
-- 薄前端单页（录音/放音/对话/反馈）—— 还没做，目前只有 FastAPI 接口 + Swagger UI (`/docs`) 手测
+- 薄前端单页（录音/放音/对话/反馈）—— 已做，见 `web/index.html`；`/docs` 的 Swagger UI 还留着方便测接口
 
 ## 核心约束（违背即破坏产品）
 

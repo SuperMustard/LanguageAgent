@@ -1,7 +1,9 @@
 from datetime import datetime, timezone
+from pathlib import Path
 from urllib.parse import quote
 
 from fastapi import FastAPI, File, HTTPException, Response, UploadFile
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
 from . import db, debrief, export
@@ -26,6 +28,13 @@ from .tts.mock import MockTTSClient
 from .tts_text import strip_for_speech
 
 app = FastAPI(title="LanguageAgent — 口语演练 Agent (slice 1+2, 文字+语音)")
+
+_INDEX_HTML_PATH = Path(__file__).resolve().parent.parent / "web" / "index.html"
+
+
+@app.get("/", response_class=HTMLResponse)
+def index() -> str:
+    return _INDEX_HTML_PATH.read_text(encoding="utf-8")
 
 
 def _build_llm() -> LLMClient:

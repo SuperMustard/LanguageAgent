@@ -1,0 +1,403 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>语言口语演练</title>
+<style>
+  :root {
+    --bg: #f6f5f2;
+    --panel: #ffffff;
+    --border: #e2ded6;
+    --text: #2a2723;
+    --muted: #86807a;
+    --accent: #b5553a;
+    --accent-dark: #8f4230;
+    --user-bubble: #e8e2d8;
+    --ai-bubble: #f1e8dd;
+    --error: #b3392c;
+    --error-bg: #fbe9e6;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+  }
+  .wrap {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 24px 16px 80px;
+  }
+  h1 {
+    font-size: 20px;
+    margin: 0 0 4px;
+  }
+  .sub {
+    color: var(--muted);
+    font-size: 13px;
+    margin-bottom: 20px;
+  }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+  .row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  select, button {
+    font-size: 14px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: #fff;
+    color: var(--text);
+    cursor: pointer;
+  }
+  button.primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+  }
+  button.primary:hover { background: var(--accent-dark); }
+  button:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+  button.recording {
+    background: var(--error);
+    border-color: var(--error);
+    color: #fff;
+  }
+  #chat {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-height: 120px;
+  }
+  .bubble {
+    max-width: 80%;
+    padding: 10px 14px;
+    border-radius: 12px;
+    line-height: 1.5;
+    font-size: 14px;
+    white-space: pre-wrap;
+  }
+  .bubble.ai {
+    background: var(--ai-bubble);
+    align-self: flex-start;
+    border-bottom-left-radius: 2px;
+  }
+  .bubble.user {
+    background: var(--user-bubble);
+    align-self: flex-end;
+    border-bottom-right-radius: 2px;
+  }
+  .bubble .label {
+    display: block;
+    font-size: 11px;
+    color: var(--muted);
+    margin-bottom: 2px;
+  }
+  #status {
+    font-size: 13px;
+    color: var(--muted);
+    min-height: 18px;
+  }
+  #error {
+    display: none;
+    background: var(--error-bg);
+    color: var(--error);
+    border: 1px solid var(--error);
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-size: 13px;
+    margin-bottom: 16px;
+  }
+  .card {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+    margin-bottom: 10px;
+    font-size: 13px;
+  }
+  .card .zh { font-weight: 600; margin-bottom: 6px; }
+  .card .wrong { color: var(--error); text-decoration: line-through; }
+  .card .correct { color: #2f7a4f; font-weight: 600; }
+  .card .note { color: var(--muted); margin-top: 6px; }
+  .card .pattern {
+    display: inline-block;
+    margin-top: 6px;
+    font-size: 11px;
+    background: var(--ai-bubble);
+    padding: 2px 8px;
+    border-radius: 999px;
+  }
+  .word-item {
+    display: inline-block;
+    background: var(--ai-bubble);
+    border-radius: 999px;
+    padding: 4px 10px;
+    margin: 3px 4px 3px 0;
+    font-size: 13px;
+  }
+  h2 { font-size: 15px; margin: 0 0 10px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>语言口语演练</h1>
+  <div class="sub">角色扮演不纠错；结束后单独诊断。演练中的语音不会被打断。</div>
+
+  <div id="error"></div>
+
+  <div class="panel">
+    <div class="row">
+      <select id="scenario-select"></select>
+      <button id="start-btn" class="primary">开始演练</button>
+      <button id="record-btn" disabled>🎤 按一下开始说话</button>
+      <button id="end-btn" disabled>结束演练</button>
+    </div>
+    <div id="status"></div>
+  </div>
+
+  <div class="panel">
+    <div id="chat"></div>
+  </div>
+
+  <div id="debrief-panel" class="panel" style="display:none">
+    <h2>Debrief 诊断</h2>
+    <div id="debrief-sentences"></div>
+    <div id="debrief-words"></div>
+  </div>
+
+  <audio id="player" style="display:none"></audio>
+</div>
+
+<script>
+const state = {
+  sessionId: null,
+  mediaRecorder: null,
+  chunks: [],
+  recording: false,
+};
+
+const el = {
+  scenarioSelect: document.getElementById('scenario-select'),
+  startBtn: document.getElementById('start-btn'),
+  recordBtn: document.getElementById('record-btn'),
+  endBtn: document.getElementById('end-btn'),
+  status: document.getElementById('status'),
+  chat: document.getElementById('chat'),
+  error: document.getElementById('error'),
+  player: document.getElementById('player'),
+  debriefPanel: document.getElementById('debrief-panel'),
+  debriefSentences: document.getElementById('debrief-sentences'),
+  debriefWords: document.getElementById('debrief-words'),
+};
+
+function showError(msg) {
+  el.error.textContent = msg;
+  el.error.style.display = 'block';
+}
+
+function clearError() {
+  el.error.style.display = 'none';
+}
+
+function setStatus(msg) {
+  el.status.textContent = msg;
+}
+
+function addBubble(role, text) {
+  const bubble = document.createElement('div');
+  bubble.className = 'bubble ' + role;
+  const label = document.createElement('span');
+  label.className = 'label';
+  label.textContent = role === 'ai' ? 'AI' : '你';
+  bubble.appendChild(label);
+  bubble.appendChild(document.createTextNode(text));
+  el.chat.appendChild(bubble);
+  el.chat.scrollTop = el.chat.scrollHeight;
+}
+
+async function playAudioBlob(blob) {
+  const url = URL.createObjectURL(blob);
+  el.player.src = url;
+  try {
+    await el.player.play();
+  } catch (e) {
+    // 浏览器可能因为没有用户交互直接播放被拦截，忽略即可，文字记录仍然有效
+  }
+}
+
+async function loadScenarios() {
+  const res = await fetch('/scenarios');
+  const data = await res.json();
+  el.scenarioSelect.innerHTML = '';
+  for (const [key, desc] of Object.entries(data)) {
+    const opt = document.createElement('option');
+    opt.value = key;
+    opt.textContent = `${key} — ${desc}`;
+    el.scenarioSelect.appendChild(opt);
+  }
+}
+
+async function startSession() {
+  clearError();
+  el.startBtn.disabled = true;
+  setStatus('开始演练中…');
+  try {
+    const res = await fetch('/sessions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ scenario: el.scenarioSelect.value }),
+    });
+    if (!res.ok) throw new Error((await res.json()).detail || res.statusText);
+    const body = await res.json();
+    state.sessionId = body.session_id;
+    el.chat.innerHTML = '';
+    addBubble('ai', body.opening_line);
+
+    const audioRes = await fetch(`/sessions/${state.sessionId}/opening-audio`);
+    if (audioRes.ok) await playAudioBlob(await audioRes.blob());
+
+    el.recordBtn.disabled = false;
+    el.endBtn.disabled = false;
+    el.debriefPanel.style.display = 'none';
+    setStatus('演练中——按住麦克风按钮说话。');
+  } catch (e) {
+    showError('开始演练失败：' + e.message);
+    setStatus('');
+  } finally {
+    el.startBtn.disabled = false;
+  }
+}
+
+async function toggleRecording() {
+  clearError();
+  if (!state.recording) {
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (e) {
+      showError('无法访问麦克风：' + e.message);
+      return;
+    }
+    state.chunks = [];
+    state.mediaRecorder = new MediaRecorder(stream);
+    state.mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) state.chunks.push(e.data); };
+    state.mediaRecorder.onstop = onRecordingStop;
+    state.mediaRecorder.start();
+    state.recording = true;
+    el.recordBtn.textContent = '⏹ 点击结束并发送';
+    el.recordBtn.classList.add('recording');
+    setStatus('录音中…');
+  } else {
+    state.mediaRecorder.stop();
+    state.mediaRecorder.stream.getTracks().forEach((t) => t.stop());
+    state.recording = false;
+    el.recordBtn.textContent = '🎤 按一下开始说话';
+    el.recordBtn.classList.remove('recording');
+  }
+}
+
+async function onRecordingStop() {
+  const blob = new Blob(state.chunks, { type: 'audio/webm' });
+  if (blob.size === 0) {
+    setStatus('没录到声音，再试一次。');
+    return;
+  }
+  setStatus('识别中…');
+  el.recordBtn.disabled = true;
+  try {
+    const form = new FormData();
+    form.append('audio', blob, 'recording.webm');
+    const res = await fetch(`/sessions/${state.sessionId}/voice-messages`, {
+      method: 'POST',
+      body: form,
+    });
+    if (!res.ok) throw new Error((await res.json()).detail || res.statusText);
+    const transcribed = decodeURIComponent(res.headers.get('X-Transcribed-Text') || '');
+    const reply = decodeURIComponent(res.headers.get('X-Reply-Text') || '');
+    addBubble('user', transcribed);
+    addBubble('ai', reply);
+    await playAudioBlob(await res.blob());
+    setStatus('演练中——按一下麦克风按钮继续。');
+  } catch (e) {
+    showError('语音回合失败：' + e.message);
+    setStatus('');
+  } finally {
+    el.recordBtn.disabled = false;
+  }
+}
+
+function renderDebrief(data) {
+  el.debriefSentences.innerHTML = '';
+  el.debriefWords.innerHTML = '';
+
+  if (data.sentences.length === 0) {
+    el.debriefSentences.innerHTML = '<div class="sub">这一场没有明显病句，很不错。</div>';
+  }
+  for (const s of data.sentences) {
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.innerHTML = `
+      <div class="zh">${s.zh}</div>
+      <div class="wrong">${s.en_wrong}</div>
+      <div class="correct">${s.en_correct}</div>
+      <div class="note">${s.error_note}</div>
+      <span class="pattern">${s.pattern}</span>
+    `;
+    el.debriefSentences.appendChild(card);
+  }
+
+  if (data.words.length > 0) {
+    const title = document.createElement('div');
+    title.className = 'sub';
+    title.textContent = '生词：';
+    el.debriefWords.appendChild(title);
+    for (const w of data.words) {
+      const chip = document.createElement('span');
+      chip.className = 'word-item';
+      chip.textContent = w.meaning ? `${w.word}｜${w.meaning}` : w.word;
+      el.debriefWords.appendChild(chip);
+    }
+  }
+}
+
+async function endSession() {
+  clearError();
+  if (!state.sessionId) return;
+  el.endBtn.disabled = true;
+  el.recordBtn.disabled = true;
+  setStatus('生成 Debrief 诊断中…');
+  try {
+    const res = await fetch(`/sessions/${state.sessionId}/end`, { method: 'POST' });
+    if (!res.ok) throw new Error((await res.json()).detail || res.statusText);
+    const data = await res.json();
+    renderDebrief(data);
+    el.debriefPanel.style.display = 'block';
+    setStatus('演练已结束。数据已存库，可以在后端调用 /export/{language} 导出。');
+    state.sessionId = null;
+  } catch (e) {
+    showError('结束演练失败：' + e.message);
+    setStatus('');
+  }
+}
+
+el.startBtn.addEventListener('click', startSession);
+el.recordBtn.addEventListener('click', toggleRecording);
+el.endBtn.addEventListener('click', endSession);
+
+loadScenarios().catch((e) => showError('加载场景失败：' + e.message));
+</script>
+</body>
+</html>
