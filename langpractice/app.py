@@ -1,3 +1,6 @@
+import os
+import threading
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import quote
@@ -35,6 +38,18 @@ _INDEX_HTML_PATH = Path(__file__).resolve().parent.parent / "web" / "index.html"
 @app.get("/", response_class=HTMLResponse)
 def index() -> str:
     return _INDEX_HTML_PATH.read_text(encoding="utf-8")
+
+
+def _delayed_exit() -> None:
+    # 留点时间让这次请求的响应先发出去，再终止进程——本地单人开发工具，不用优雅关闭。
+    time.sleep(0.3)
+    os._exit(0)
+
+
+@app.post("/shutdown")
+def shutdown() -> dict:
+    threading.Thread(target=_delayed_exit, daemon=True).start()
+    return {"status": "shutting down"}
 
 
 def _build_llm() -> LLMClient:

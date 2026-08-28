@@ -164,6 +164,7 @@
       <button id="start-btn" class="primary">开始演练</button>
       <button id="record-btn" disabled>🎤 按一下开始说话</button>
       <button id="end-btn" disabled>结束演练</button>
+      <button id="exit-btn">退出</button>
     </div>
     <div id="status"></div>
   </div>
@@ -194,6 +195,7 @@ const el = {
   startBtn: document.getElementById('start-btn'),
   recordBtn: document.getElementById('record-btn'),
   endBtn: document.getElementById('end-btn'),
+  exitBtn: document.getElementById('exit-btn'),
   status: document.getElementById('status'),
   chat: document.getElementById('chat'),
   error: document.getElementById('error'),
@@ -394,9 +396,29 @@ async function endSession() {
   }
 }
 
+async function exitApp() {
+  clearError();
+  if (state.sessionId && !confirm('演练还没结束，退出会丢失这一场还没保存的记录，确定要退出吗？')) {
+    return;
+  }
+  el.startBtn.disabled = true;
+  el.recordBtn.disabled = true;
+  el.endBtn.disabled = true;
+  el.exitBtn.disabled = true;
+  setStatus('正在关闭服务…');
+  try {
+    await fetch('/shutdown', { method: 'POST' });
+  } catch (e) {
+    // 关闭过程中连接断开是预期行为，忽略
+  }
+  setStatus('服务已关闭，可以关闭这个标签页了。');
+  window.close(); // 浏览器可能拦截非脚本打开的标签页，拦截时上面那句提示就是后备方案
+}
+
 el.startBtn.addEventListener('click', startSession);
 el.recordBtn.addEventListener('click', toggleRecording);
 el.endBtn.addEventListener('click', endSession);
+el.exitBtn.addEventListener('click', exitApp);
 
 loadScenarios().catch((e) => showError('加载场景失败：' + e.message));
 </script>
