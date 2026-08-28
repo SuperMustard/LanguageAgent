@@ -23,6 +23,7 @@ from .stt.groq_whisper import GroqWhisperSTT
 from .tts.azure_rest import AzureTTSClient
 from .tts.base import TTSClient
 from .tts.mock import MockTTSClient
+from .tts_text import strip_for_speech
 
 app = FastAPI(title="LanguageAgent — 口语演练 Agent (slice 1+2, 文字+语音)")
 
@@ -123,7 +124,7 @@ def opening_audio(session_id: str) -> Response:
     session = _sessions.get(session_id)
     if session is None:
         raise HTTPException(404, "unknown session")
-    audio = _tts.synthesize(session.opening_line, session.card.language)
+    audio = _tts.synthesize(strip_for_speech(session.opening_line), session.card.language)
     return Response(
         content=audio,
         media_type="audio/wav",
@@ -147,7 +148,7 @@ async def voice_message(session_id: str, audio: UploadFile = File(...)) -> Respo
         audio_bytes, filename=audio.filename or "audio.wav", language=session.card.language
     )
     reply_text = session.turn(transcribed_text)
-    reply_audio = _tts.synthesize(reply_text, session.card.language)
+    reply_audio = _tts.synthesize(strip_for_speech(reply_text), session.card.language)
 
     return Response(
         content=reply_audio,
