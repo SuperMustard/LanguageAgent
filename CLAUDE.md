@@ -18,8 +18,8 @@ Agent 做口语演练 + 演练后诊断，把结果导出给 Anki 插件 langhel
     `web/pipecat/`（前端构建产物）为静态文件。
   - `langpractice/voice_bot.py`（端口 7860，Pipecat runner）：真正的语音 pipeline——
     `transport.input() → GroqSTTService → user_aggregator → GroqLLMService (system
-    prompt = personas.py 渲染的角色卡) → AzureTTSService → transport.output() →
-    assistant_aggregator`，VAD 用 Silero，接在 `LLMContextAggregatorPair` 的
+prompt = personas.py 渲染的角色卡) → AzureTTSService → transport.output() →
+assistant_aggregator`，VAD 用 Silero，接在 `LLMContextAggregatorPair` 的
     `user_params` 里。学习者点"结束演练"时，前端发一个自定义 RTVI 消息
     `end_session`（`client.sendClientRequest('end_session', {})`），bot 端的
     `on_client_message` 处理器直接从 `context.get_messages()` 拼 transcript，调
@@ -59,10 +59,9 @@ Agent 做口语演练 + 演练后诊断，把结果导出给 Anki 插件 langhel
   也验证过读数正确。
 - **场景卡自动生成已实现**（这个功能一直记在"已推迟的增量想法"里，现在做完了，
   那个小节整个删掉了）：`langpractice/scenario_gen.py::generate_persona_card(llm,
-  description, language)`——用户给一段自由中文描述，LLM 按 persona_template.md
-  的字段结构填充生成 `PersonaCard`，`key` 自动生成 `custom_` 前缀 + 短 uuid。
-  `PersonaCard` 挪到了 `models.py`（原来在 `personas.py`，为了不让 `db.py` 反过来
-  import `personas.py` 成环）。
+description, language)`——用户给一段自由中文描述，LLM 按 persona*template.md
+  的字段结构填充生成 `PersonaCard`，`key` 自动生成 `custom*`前缀 + 短 uuid。`PersonaCard`挪到了`models.py`（原来在 `personas.py`，为了不让 `db.py`反过来
+import`personas.py` 成环）。
 - **场景模型后来又统一简化了一轮（同一天）：不再区分"内置"和"自动生成"**——原来
   `personas.py` 有个硬编码的 `BUILTIN_SCENARIOS` dict，跟 DB 里的自动生成场景是
   两套并行逻辑，`get_scenario()`/`list_all_scenario_descriptions()` 得两边分别查、
@@ -89,6 +88,26 @@ Agent 做口语演练 + 演练后诊断，把结果导出给 Anki 插件 langhel
     后确认真的从 `/scenarios/full` 里消失、主页场景下拉框仍能正常工作。
 - 改动历史看 `git log`，这里不重复维护——已知的非显而易见的坑记在下面「实现踩坑记录」。
 
+### 下一个要做的功能（规划已定，尚未动手）
+
+**专业应对话术推荐**——学习素材的第三类，灵魂是"用专业方式处理难缠客户"（诊所/按摩环境）。
+完整规格见 SPEC 模块 2.5 + 核心约束 5/6。要点：
+
+- **并入 Debrief 那一次调用产出**（不新增调用）：输出从 `{sentences, words}` 扩成
+  `{sentences, words, pro_phrases}`，分别落三张表。
+- **新表 `pro_phrases`**（db.py，操作同构于现有两表）：字段见「关键字段名」。按专业维度组织
+  （同理承接/设立边界/降级冲突/重定向解决/vouvoiement），**锚定 transcript**（针对刚才真实
+  应对的刁难给更专业说法，不凭空罗列）。
+- **复用现有诱导+掌握度引擎**：`induction.py` 的 `retrieve_induction_targets` 要**纳入
+  `pro_phrases` 作第三来源**，用保底+上限配比（见配置项）保证话术有配额、不被生词淹没。
+  防重复因此白送（已掌握/最近推过的检索时自然排除）；产出前再把已在库话术传进 prompt 做语义去重。
+- **角色卡加"难缠程度"字段**（models.py/personas.py + `scenarios` 表存默认 + 前端每次可选，
+  经 `/start` 的 `body` 传入）。
+- **暂不导出**（约束 5）。
+- **配置项**（config.py，`.env` 可覆盖）：`INDUCTION_MAX_TARGETS`（总数上限）、
+  `INDUCTION_MIN_PHRASES`（话术保底条数）。
+- history 页 + `/records/{language}` 要把 `pro_phrases` 也纳入查看/删除。
+
 ## 技术栈
 
 - Python + FastAPI 后端（`langpractice/app.py`），**不再自己跑语音**
@@ -96,9 +115,9 @@ Agent 做口语演练 + 演练后诊断，把结果导出给 Anki 插件 langhel
 - **语音编排是 Pipecat**（`langpractice/voice_bot.py`，独立进程）：全双工实时 pipeline，
   VAD 自动断句、支持打断。transport 用 `SmallWebRTCTransport`（本地、不依赖 Daily 云）。
 - Groq Whisper (STT，Pipecat 里是 VAD 分段不是逐词流式) + Groq（LLM，见下方踩坑记录）
-  + Azure Speech (TTS)——STT/TTS 现在是 Pipecat 自带的 `GroqSTTService`/`AzureTTSService`，
-  我们自己手写的 `stt/` `tts/` 包已经删掉；`llm/groq_client.py` 的 `GroqLLMClient` 还在用，
-  但只用于 Debrief 那一次性非流式调用，跟 Pipecat 的语音 pipeline 是两条独立路径。
+  - Azure Speech (TTS)——STT/TTS 现在是 Pipecat 自带的 `GroqSTTService`/`AzureTTSService`，
+    我们自己手写的 `stt/` `tts/` 包已经删掉；`llm/groq_client.py` 的 `GroqLLMClient` 还在用，
+    但只用于 Debrief 那一次性非流式调用，跟 Pipecat 的语音 pipeline 是两条独立路径。
 - 前端 `web/index.html` + `client/`（Vite，构建出 `web/pipecat/voice-client.js`）；
   `/docs` 的 Swagger UI 还留着方便测 `/scenarios` `/export` 这些非语音接口
 
@@ -116,6 +135,14 @@ Agent 做口语演练 + 演练后诊断，把结果导出给 Anki 插件 langhel
 
 4. **导出格式必须严格匹配 langhelper 导入器**（见 SPEC 导出格式契约）。
    病句是 JSON 五字段数组，生词是纯文本 `词|义`。字段名照抄，不自创。
+
+5. **专业话术（`pro_phrases`）暂不导出。** langhelper 只支持病句卡/单词卡两种卡型，
+   整句话术塞进单词卡会错配。等 langhelper 支持"话术卡"后再接导出管道。字段（`phrase`/
+   `meaning`/`language`）已为导出预留，别现在硬塞进单词卡通道，也别回头才想起补字段。
+
+6. **难缠红线是铁律，写死为常量，不做配置。** 即使选"极难缠"，角色也不能突破
+   "仍可被专业方式化解"的边界（不无理取闹到对话崩溃、不人身攻击、始终留有专业应对空间）。
+   这跟"难缠程度"那个可调档位是两回事：档位是旋钮，红线是墙，旋钮转到底也不能越墙。
 
 ## 编码偏好
 
@@ -135,18 +162,91 @@ Agent 做口语演练 + 演练后诊断，把结果导出给 Anki 插件 langhel
 
 生词卡：`word` `meaning`
 
+专业话术表 `pro_phrases`：`language` `scenario_type` `phrase` `meaning` `dimension`
+（同理承接/设立边界/降级冲突/重定向解决/vouvoiement）`usage_note` `mastery` `last_practiced`
+（暂不导出；`phrase`/`meaning`/`language` 为未来导出预留）
+
 agent 内部额外字段：`language` `mastery` `last_practiced`（导出病句/生词时剥离，不进 langhelper 文件）
+
+## 多平台演进路线（规划中，尚未动手）
+
+> 这是"未来要做的方向和已想清楚的决策"，不是已完成的东西。动手前照这个顺序走，
+> 别一步到位把风险藏到最后才暴露。
+
+### 目标形态
+
+- **客户端：Flutter**（Android 优先）。一套码覆盖 Android/iOS/桌面/Web，复用已有的 Flutter 经验。
+  用 `pipecat_flutter` 包（0.2.x）连后端。
+- **后端：上云**。理由是需要在非局域网环境（在外面、给身边人临时体验）使用，局域网连接满足不了。
+  VPS 用 **Oracle Cloud Always Free ARM**（2026-06 砍半后是 2 OCPU / 12GB，对单人自用够用；免费）。
+- **使用场景是单人自用 + 当面递手机给人体验**，不是网络分发。所以：**不做**用户系统、账号、
+  登录、计费、每用户 key、数据隔离、自动扩缩容——这些都是"真决定做产品"才碰的。
+- **key 策略**：就用运营者（你）自己的 Groq/Azure key，配在 VPS 上。单人量级，账单可控。
+  "用户自带 key" 推迟到确认要做面向他人的产品之后再设计。
+
+### 两个头号技术风险（比选 VPS 本身重要得多）
+
+1. **手机↔云的 WebRTC NAT 穿透**：局域网内 WebRTC 好使是因为同网段直连；上云后手机在
+   4G/5G 或别人 WiFi 后面、VPS 在数据中心，直连大概率打不通，标准解法是自架 TURN（coturn，
+   可跑在同一台 VPS）。**但见下面「传输层」——换 WebSocket 可能直接绕开这个坑。**
+2. **Pipecat 及其原生依赖（WebRTC、音频、Silero VAD 等）在 ARM 上能否顺利安装/运行**：
+   Oracle 免费档是 ARM（Ampere A1）不是 x86。大部分 Python 没问题，但原生扩展要实测。
+   x86 micro 免费实例只有 1GB RAM，跑不动语音管线，所以基本得让 ARM 这条路走通。
+   **这个坑换传输/换框架都躲不掉（除非彻底重写），只能实测确认。**
+
+### 框架与传输层的决策
+
+- **框架：继续用 Pipecat，不换 LiveKit。** LiveKit 的强项是大规模生产级媒体（几百上千并发、
+  自带成熟 WebRTC 媒体服务器），单人自用用不上；换过去要把已跑通验证过的整套 voice_bot.py
+  推倒重写、还要运维更重的媒体服务器，不划算。OpenAI Realtime（锁死单厂商、STT/LLM/TTS 不能
+  自由换，丢掉 Groq+Azure 组合）、Vapi 等托管平台（放弃自托管、按量付费）都和"自托管+免费+
+  自由换模型"的方向相反，排除。
+
+- **传输层：认真考虑把 `SmallWebRTCTransport` 换成 WebSocket 传输。** Pipecat 的传输是可插拔的
+  （Daily / HTTP / WebSocket / 自定义都支持），换传输是改配置层，不用重写 debrief/诱导/场景等
+  核心逻辑。WebSocket 走 VPS 公网 IP 直连，**不需要 NAT 打洞、不需要 TURN——直接绕开风险①**。
+  代价是延迟比 WebRTC 略高，但本项目是回合制语言练习（你说完它答），不是实时电话，能接受。
+  - **待验证**：`pipecat_flutter` 之前查到支持的是 Daily / SmallWebRTC 两种传输。后端若换 WebSocket，
+    Flutter 客户端这边能不能直接用 pipecat_flutter、还是要在 Flutter 侧自己接 WebSocket 音频，
+    **必须先确认**。这是换传输要付的、尚未验证的代价，不是白换。
+
+### 上云验证顺序（关键：先拆最大风险，再堆功能）
+
+1. **最小链路先行**：在 Oracle ARM VPS 上，只验证「Pipecat 后端能装能跑（拆 ARM 坑）
+   - 用 WebSocket 传输让手机从 4G 连通一轮语音（拆穿透坑）」。**这一步先用现有的网页前端**，
+     不要急着上 Flutter、不要搬 JSON API、不要搬场景管理。两个最大风险在投入最小时就试出来。
+2. **第 1 步通过后**：Flutter Android 客户端 + `app.py` 非语音端点整理成干净 JSON API
+   （Flutter 要 JSON 不要 HTML；现有 `/scenarios` `/export` `/records` 本就是 JSON 可复用，
+   serve HTML 的 `GET /` / history.html / scenario-manager.html 要用 Dart 重写成界面）+ 全套搬上云。
+3. **产品化（只有体验反馈证明有人真要用才走）**：用户系统、每用户 key、数据隔离、计费。
+
+### Oracle 免费档特有注意
+
+- ARM 架构（非 x86）；免费 ARM 容量在热门区域常被抢光（"out of host capacity"），
+  注册开机可能要挑区域反复重试；**空闲实例可能被回收**（本项目"偶尔用一下"的模式正好踩这个，
+  留意保活）；无 SLA；注册流程比一般 VPS 严（信用卡验证）。
+- **安全**：key 会放在公网 VPS 上（比本地电脑暴露面大）。基本措施：key 放环境变量别进 git、
+  防火墙只开必要端口、SSH 用密钥登录。
 
 ## 实现踩坑记录
 
+> 下面前两条是**专业话术功能的预判坑**（还没写、还没踩，是设计时就知道要防的），
+> 其余是已经真实踩过的坑。做话术功能时先看这两条。
+
+- **【预判】三类诱导素材要设配比，否则话术会被淹没**：加了 `pro_phrases` 后诱导池变大
+  （病句+生词+话术），如果不设保底，可能连续几次诱导都抽到生词、话术反而挑不到——而话术
+  正是使用者最想练的。务必用 `INDUCTION_MIN_PHRASES` 给话术设保底配额，别让某一类挤掉其它。
+- **【预判】难缠程度别调到"无法对话"**：强度设太高、角色纯粹无理取闹，学习者没法正常练应对、
+  Debrief 也提取不出有效的"专业应对"素材可推荐。角色卡渲染时要给强度设上限（红线，写死为常量，
+  见核心约束 6）：难缠但**仍是可以用专业方式化解的真实客户**，不是存心捣乱到对话崩溃。
 - **Pipecat runner 的 `/start` 接口，自定义数据必须包在 `"body"` 键里，不能跟
   `transport`/`createDailyRoom` 平级**：源码见 `pipecat/runner/run.py` 里
   `_setup_unified_start_route` 的 docstring 和 `active_sessions[session_id] =
-  request_data.get("body", {})`——顶层塞别的字段会被直接丢弃，`runner_args.body`
+request_data.get("body", {})`——顶层塞别的字段会被直接丢弃，`runner_args.body`
   永远拿不到。真实症状：场景切换在 UI 上看着选了，但 bot 端 `_resolve_scenario()`
   永远落到默认值 `clinic_fr`，因为 `client/src/voice-client.js` 一开始把 `scenario`
   塞在 `requestData` 顶层。现在 `connect()` 里是 `requestData: {..., body: { scenario
-  } }`。以后往 `/start` 塞任何自定义字段，记得套一层 `body`。
+} }`。以后往 `/start` 塞任何自定义字段，记得套一层 `body`。
 - **`GroqSTTService` 不传 `language` 会把法语"翻译"成英文，而不是转写原文**：真人测试
   时发现——说法语，回来的文字是英文，导致角色扮演里答非所问（被当成怪回答，不是被"纠错"，
   演练铁律没破，但体验很怪）。Whisper 系模型在没有语言提示、音频短/不确定时，有时会走
@@ -180,8 +280,8 @@ agent 内部额外字段：`language` `mastery` `last_practiced`（导出病句/
   重试逻辑，没有额外调过参数。
 - **Pipecat 版本快、API 会变，遇到不确定的用法别凭记忆猜，用 `pipecat init` 现场生成一个
   参考项目**：`pipecat.exe init --name ref -t smallwebrtc -m cascade --stt groq_stt
-  --llm groq_llm --tts azure_tts --client-framework vanilla --client-server vite
-  --no-deploy-to-cloud`（跑在装了 `pipecat-ai[cli]` 的 venv 里）。这次就是靠这个才搞清楚
+--llm groq_llm --tts azure_tts --client-framework vanilla --client-server vite
+--no-deploy-to-cloud`（跑在装了 `pipecat-ai[cli]` 的 venv 里）。这次就是靠这个才搞清楚
   `PipelineWorker`/`WorkerRunner`（不是 doc 里较老的 `PipelineTask`/`PipelineRunner`）、
   VAD 挂在 `LLMContextAggregatorPair` 的 `user_params` 而不是单独的 processor、
   `GroqLLMService.Settings(system_instruction=...)` 而不是塞 context 消息、以及
@@ -190,7 +290,7 @@ agent 内部额外字段：`language` `mastery` `last_practiced`（导出病句/
   first-run 会因为 GBK 编码画勾字符崩掉，加 `PYTHONUTF8=1 PYTHONIOENCODING=utf-8` 前缀
   就好——这跟本文件其它地方提过的 Windows 控制台编码问题是同一类坑。
 - **Pipecat 的 bot runner 是它自己的独立 FastAPI 服务器**（默认端口 7860，`pipecat.runner.
-  run.main()` 起的），不会自动并进你现有的 FastAPI app。这个项目就是两个进程
+run.main()` 起的），不会自动并进你现有的 FastAPI app。这个项目就是两个进程
   （`app.py` 端口 8000 管页面，`voice_bot.py` 端口 7860 管语音），`run.bat` 分别起。
   别想着"想办法揉成一个进程"去折腾，这是框架的标准形态。
 - **Pipecat 客户端（`@pipecat-ai/client-js` + `@pipecat-ai/small-webrtc-transport`）
