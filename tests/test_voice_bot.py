@@ -1,7 +1,7 @@
 import pytest
 
 from langpractice import db
-from langpractice.voice_bot import _build_transcript, _resolve_scenario
+from langpractice.voice_bot import _build_transcript, _resolve_hostility_level, _resolve_scenario
 
 
 class _FakeRunnerArgs:
@@ -40,6 +40,35 @@ def test_resolve_scenario_unknown_key_raises():
     conn = db.connect(":memory:")
     with pytest.raises(ValueError):
         _resolve_scenario(conn, _FakeRunnerArgs({"scenario": "does_not_exist"}))
+
+
+def test_resolve_hostility_level_uses_body_override():
+    conn = db.connect(":memory:")
+    card = _resolve_scenario(conn, _FakeRunnerArgs({"scenario": "clinic_fr"}))
+    level = _resolve_hostility_level(card, _FakeRunnerArgs({"hostility_level": "极难缠"}))
+    assert level == "极难缠"
+
+
+def test_resolve_hostility_level_falls_back_to_scenario_default_when_absent():
+    conn = db.connect(":memory:")
+    card = _resolve_scenario(conn, _FakeRunnerArgs({"scenario": "clinic_fr"}))
+    level = _resolve_hostility_level(card, _FakeRunnerArgs({}))
+    assert level == card.hostility_level
+
+
+def test_resolve_hostility_level_falls_back_when_body_none():
+    conn = db.connect(":memory:")
+    card = _resolve_scenario(conn, _FakeRunnerArgs({"scenario": "clinic_fr"}))
+    level = _resolve_hostility_level(card, _FakeRunnerArgs(None))
+    assert level == card.hostility_level
+
+
+def test_resolve_hostility_level_empty_string_override_falls_back_to_default():
+    # 前端"场景默认"选项传空字符串，不是不传这个键——两种情况都要落回场景默认值。
+    conn = db.connect(":memory:")
+    card = _resolve_scenario(conn, _FakeRunnerArgs({"scenario": "clinic_fr"}))
+    level = _resolve_hostility_level(card, _FakeRunnerArgs({"hostility_level": ""}))
+    assert level == card.hostility_level
 
 
 def test_build_transcript_only_includes_user_and_assistant():

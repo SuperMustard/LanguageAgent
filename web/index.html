@@ -229,6 +229,13 @@
   <div class="panel">
     <div class="row">
       <select id="scenario-select"></select>
+      <select id="hostility-select" title="不选就用这个场景自己的默认难缠程度">
+        <option value="">难缠程度：场景默认</option>
+        <option value="温和">温和</option>
+        <option value="中等">中等</option>
+        <option value="难缠">难缠</option>
+        <option value="极难缠">极难缠</option>
+      </select>
       <button id="start-btn" class="primary">开始演练</button>
       <button id="mic-btn" disabled>🎤 麦克风开启（点击静音）</button>
       <button id="end-btn" disabled>结束演练</button>
@@ -302,6 +309,7 @@ const state = {
 
 const el = {
   scenarioSelect: document.getElementById('scenario-select'),
+  hostilitySelect: document.getElementById('hostility-select'),
   startBtn: document.getElementById('start-btn'),
   micBtn: document.getElementById('mic-btn'),
   endBtn: document.getElementById('end-btn'),
@@ -436,7 +444,7 @@ async function startSession() {
     state.voice = new VoiceSession(voiceCallbacks());
     el.chat.innerHTML = '';
     el.debriefPanel.style.display = 'none';
-    await state.voice.connect(el.scenarioSelect.value);
+    await state.voice.connect(el.scenarioSelect.value, el.hostilitySelect.value);
     el.micBtn.disabled = false;
     el.micBtn.textContent = '🎤 麦克风开启（点击静音）';
   } catch (e) {

@@ -22,10 +22,16 @@ def _load_induction_block_template() -> str:
     return section.split("```", 2)[1].strip()
 
 
-def render_persona_prompt(card: PersonaCard, induction_targets: str = "") -> str:
+def render_persona_prompt(
+    card: PersonaCard, induction_targets: str = "", hostility_level: str | None = None
+) -> str:
     """induction_targets 非空时才注入隐藏引导目标（二期口语侧诱导，见 SPEC）；
     默认空字符串，行为跟一期完全一样——没有旧表达可诱导时（比如这门语言第一次练）
-    自然退化成空，不用调用方特判。"""
+    自然退化成空，不用调用方特判。
+
+    hostility_level 为 None 时用场景卡自己的默认值（card.hostility_level）——
+    "前端不选就用场景默认"这条規则由调用方（voice_bot.py）决定要不要传临场覆盖值，
+    这里只管兜底。难缠满级也不能突破的红线是模板里写死的固定文字，不受这个参数影响。"""
     body = _load_template_body()
     induction_block = ""
     if induction_targets:
@@ -40,6 +46,7 @@ def render_persona_prompt(card: PersonaCard, induction_targets: str = "") -> str
         "hidden_motivation": card.hidden_motivation,
         "scenario_description": card.scenario_description,
         "difficulty_level": card.difficulty_level,
+        "hostility_level": hostility_level or card.hostility_level,
         "induction_block": induction_block,
     }
     for key, value in replacements.items():

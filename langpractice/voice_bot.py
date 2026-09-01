@@ -86,6 +86,15 @@ def _resolve_scenario(conn: sqlite3.Connection, runner_args: RunnerArguments) ->
     return card
 
 
+def _resolve_hostility_level(card: PersonaCard, runner_args: RunnerArguments) -> str:
+    """临场覆盖优先；前端没选（body 里没带这个键，或者带了空字符串）就落回场景默认值
+    （card.hostility_level，来自 scenarios 表）。不校验是不是 HOSTILITY_LEVELS 里的
+    四档之一——渲染进 prompt 的是自由文本，就算传了个奇怪的值，最坏情况只是提示词
+    有点怪，不会破坏铁律（红线是模板里写死的，不受这个值影响）。"""
+    body = runner_args.body or {}
+    return body.get("hostility_level") or card.hostility_level
+
+
 def _build_transcript(context: LLMContext) -> str:
     speaker_names = {"assistant": "AI", "user": "学习者"}
     lines = [
@@ -101,13 +110,14 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments) -> Non
     startup_conn = db.connect()
     try:
         card = _resolve_scenario(startup_conn, runner_args)
+        hostility_level = _resolve_hostility_level(card, runner_args)
         # 口语侧诱导（二期）：不限定场景，按语言检索旧表达，注入隐藏目标。没有历史记录时
         # targets 是空列表，render_persona_prompt 自然退化成一期行为（induction_block 留空）。
         induction_targets = retrieve_induction_targets(startup_conn, card.language)
     finally:
         startup_conn.close()
 
-    logger.info(f"Starting voice bot, scenario={card.key}")
+    logger.info(f"Starting voice bot, scenario={card.key}, hostility_level={hostility_level}")
     if induction_targets:
         logger.info(f"Induction targets for this session: {induction_targets}")
 
@@ -130,7 +140,9 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments) -> Non
         settings=GroqLLMService.Settings(
             model=GROQ_MODEL,
             system_instruction=render_persona_prompt(
-                card, induction_targets=format_induction_targets(induction_targets)
+                card,
+                induction_targets=format_induction_targets(induction_targets),
+                hostility_level=hostility_level,
             )
             + _VOICE_ONLY_SUFFIX,
         ),
@@ -202,7 +214,13 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments) -> Non
                 outcomes = review_induction_usage(
                     debrief_llm, card.target_language, transcript, induction_targets
                 )
-                logger.info(f"Induction review outcomes: {outcomes}")
+                # outcomes 是 {列表位置: outcome}，不是 db id（见 induction.py 的注释——
+                # 三张表的 id 各自从 1 自增，混用 db id 当 key 会撞号），这里按位置配上
+                # 具体是哪个 target 方便看日志。
+                logger.info(
+                    "Induction review outcomes: "
+                    f"{[(t.kind, t.id, outcomes.get(i)) for i, t in enumerate(induction_targets)]}"
+                )
                 apply_mastery_updates(conn, induction_targets, outcomes, now_iso)
         finally:
             conn.close()

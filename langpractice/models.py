@@ -67,3 +67,7 @@ class PersonaCard:
     hidden_motivation: str
     scenario_description: str
     difficulty_level: str
+    # 场景默认"难缠程度"（模块 2.5 配套）——跟 difficulty_level（语言难度）是正交维度，
+    # 只影响角色的对抗/挑剔态度。每场演练前端可临场覆盖（见 config.HOSTILITY_LEVELS），
+    # 不选就用这个默认值。满级也不能突破的红线写死在 persona_template.md 里，不是这个字段管的。
+    hostility_level: str = "中等"

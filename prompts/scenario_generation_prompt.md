@@ -37,6 +37,10 @@ scenario_description 里说明"你（学习者）是按摩师，要安抚这位�
 - scenario_description：场景背景说明，要写清楚"学习者"在这个场景里扮演什么角色、
   目标是什么，中文
 - difficulty_level：语言难度描述（比如"中级，语速正常"），中文
+- hostility_level：这个场景默认的"难缠程度"，只能从这四个值里选一个：
+  "温和" / "中等" / "难缠" / "极难缠"。跟 emotional_state 呼应——如果场景涉及
+  不满、投诉、冲突（比如处理难缠客户），选中等偏上；如果是面试、日常对话这类
+  不涉及对抗的场景，选"温和"
 
 # 要求
 - 角色要有真实感、有具体的情绪和动机，不要写得像客服机器人的介绍文案
@@ -55,7 +59,8 @@ scenario_description 里说明"你（学习者）是按摩师，要安抚这位�
   "speaking_style": "...",
   "hidden_motivation": "...",
   "scenario_description": "...",
-  "difficulty_level": "..."
+  "difficulty_level": "...",
+  "hostility_level": "温和｜中等｜难缠｜极难缠 中选一个"
 }
 ```
 
@@ -68,3 +73,7 @@ scenario_description 里说明"你（学习者）是按摩师，要安抚这位�
 `scenarios` 表（`db.insert_scenario()`）。`personas.get_scenario()` /
 `list_all_scenario_descriptions()` 会自动把内置场景和这张表合并起来用，
 不需要额外接线。
+
+`hostility_level` 不是硬性必填——LLM 没给或给了四档之外的值时，
+`scenario_gen.py` 会兜底成 `config.DEFAULT_HOSTILITY_LEVEL`，不会因为这一个
+字段让整次生成失败。

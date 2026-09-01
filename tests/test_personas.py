@@ -33,6 +33,25 @@ def test_render_with_induction_targets_injects_hidden_goal_block():
     assert "{{induction_targets}}" not in prompt
 
 
+def test_render_uses_card_default_hostility_level_when_not_overridden():
+    card = _card(hostility_level="难缠")
+    prompt = render_persona_prompt(card)
+    assert "难缠" in prompt
+
+
+def test_render_overrides_hostility_level_when_given():
+    card = _card(hostility_level="温和")
+    prompt = render_persona_prompt(card, hostility_level="极难缠")
+    assert "极难缠" in prompt
+
+
+def test_render_always_includes_hostility_red_line():
+    # 红线是写死在模板里的固定文字，不管难缠程度传什么档位都应该出现。
+    prompt = render_persona_prompt(_card(hostility_level="极难缠"))
+    assert "难缠红线" in prompt
+    assert "人身攻击" in prompt
+
+
 def test_render_fills_all_scenario_placeholders():
     card = _card(
         key="interview_en",

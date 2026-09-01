@@ -21,7 +21,8 @@ _VALID_PAYLOAD = """{
   "speaking_style": "简短、带犹豫",
   "hidden_motivation": "其实想尽快结束，但嘴上一直找借口拖延",
   "scenario_description": "患者拒绝打针，你（学习者）是护士，要安抚并完成注射。",
-  "difficulty_level": "中级"
+  "difficulty_level": "中级",
+  "hostility_level": "难缠"
 }"""
 
 
@@ -33,6 +34,21 @@ def test_generate_persona_card_parses_valid_payload():
     assert card.role_identity == "一位因为害怕打针而抗拒配合的患者"
     assert card.scenario_description.startswith("患者拒绝打针")
     assert card.key.startswith("custom_")
+    assert card.hostility_level == "难缠"
+
+
+def test_generate_persona_card_falls_back_to_default_hostility_level_when_missing():
+    payload = _VALID_PAYLOAD.replace('"hostility_level": "难缠"', '"hostility_level": ""')
+    llm = _FakeLLM(payload)
+    card = generate_persona_card(llm, "desc", "en")
+    assert card.hostility_level == "中等"
+
+
+def test_generate_persona_card_falls_back_to_default_hostility_level_when_invalid():
+    payload = _VALID_PAYLOAD.replace('"hostility_level": "难缠"', '"hostility_level": "超级难缠"')
+    llm = _FakeLLM(payload)
+    card = generate_persona_card(llm, "desc", "en")
+    assert card.hostility_level == "中等"
 
 
 def test_generate_persona_card_key_is_unique_per_call():

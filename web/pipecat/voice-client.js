@@ -15160,10 +15160,10 @@ var jf = (e) => ({
 	constructor(e = {}) {
 		this.callbacks = e, this.client = null;
 	}
-	async connect(e) {
-		let t = new Af();
+	async connect(e, t) {
+		let n = new Af();
 		this.client = new A({
-			transport: t,
+			transport: n,
 			enableMic: !0,
 			enableCam: !1,
 			callbacks: {
@@ -15187,7 +15187,10 @@ var jf = (e) => ({
 				transport: "webrtc",
 				createDailyRoom: !1,
 				enableDefaultIceServers: !0,
-				body: { scenario: e }
+				body: {
+					scenario: e,
+					hostility_level: t || void 0
+				}
 			}
 		});
 	}

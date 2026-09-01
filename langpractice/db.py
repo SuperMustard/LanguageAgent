@@ -1,7 +1,7 @@
 import sqlite3
 from pathlib import Path
 
-from .config import DB_PATH
+from .config import DB_PATH, DEFAULT_HOSTILITY_LEVEL
 from .models import Expression, PersonaCard, ProPhrase, Word
 from .seed_scenarios import SEED_SCENARIOS
 
@@ -52,6 +52,7 @@ CREATE TABLE IF NOT EXISTS scenarios (
     hidden_motivation     TEXT NOT NULL,
     scenario_description  TEXT NOT NULL,
     difficulty_level      TEXT NOT NULL,
+    hostility_level       TEXT NOT NULL DEFAULT '""" + DEFAULT_HOSTILITY_LEVEL + """',
     created_at            TEXT NOT NULL DEFAULT (datetime('now'))
 );
 """
@@ -61,8 +62,21 @@ def connect(db_path: Path = DB_PATH) -> sqlite3.Connection:
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     conn.executescript(SCHEMA)
+    _migrate_scenarios_add_hostility_level(conn)
     _seed_scenarios_if_empty(conn)
     return conn
+
+
+def _migrate_scenarios_add_hostility_level(conn: sqlite3.Connection) -> None:
+    """老数据库（本次改动之前建的）的 scenarios 表没有 hostility_level 列——
+    `CREATE TABLE IF NOT EXISTS` 对已存在的表不会补列，得手动 ALTER TABLE 一次。
+    新建的库走上面 SCHEMA 里的 DEFAULT，这里天然是 no-op（列已存在）。"""
+    columns = {row["name"] for row in conn.execute("PRAGMA table_info(scenarios)")}
+    if "hostility_level" not in columns:
+        conn.execute(
+            f"ALTER TABLE scenarios ADD COLUMN hostility_level TEXT NOT NULL DEFAULT '{DEFAULT_HOSTILITY_LEVEL}'"
+        )
+        conn.commit()
 
 
 def _seed_scenarios_if_empty(conn: sqlite3.Connection) -> None:
@@ -203,6 +217,18 @@ def adjust_word_mastery(conn: sqlite3.Connection, word_id: int, delta: int, now_
     conn.commit()
 
 
+def adjust_pro_phrase_mastery(
+    conn: sqlite3.Connection, phrase_id: int, delta: int, now_iso: str
+) -> None:
+    """同 adjust_expression_mastery/adjust_word_mastery：口语侧诱导复盘用，
+    进了诱导循环的话术用同一套掌握度更新规则（下限 0，同时刷新 last_practiced）。"""
+    conn.execute(
+        "UPDATE pro_phrases SET mastery = MAX(0, mastery + ?), last_practiced = ? WHERE id = ?",
+        (delta, now_iso, phrase_id),
+    )
+    conn.commit()
+
+
 def fetch_expressions(conn: sqlite3.Connection, language: str) -> list[Expression]:
     rows = conn.execute(
         "SELECT * FROM expressions WHERE language = ? ORDER BY id", (language,)
@@ -251,6 +277,7 @@ def _row_to_persona_card(row: sqlite3.Row) -> PersonaCard:
         hidden_motivation=row["hidden_motivation"],
         scenario_description=row["scenario_description"],
         difficulty_level=row["difficulty_level"],
+        hostility_level=row["hostility_level"],
     )
 
 
@@ -261,9 +288,11 @@ def insert_scenario(conn: sqlite3.Connection, card: PersonaCard) -> None:
     conn.execute(
         """
         INSERT INTO scenarios (key, language, target_language, role_identity, emotional_state,
-                                speaking_style, hidden_motivation, scenario_description, difficulty_level)
+                                speaking_style, hidden_motivation, scenario_description, difficulty_level,
+                                hostility_level)
         VALUES (:key, :language, :target_language, :role_identity, :emotional_state,
-                :speaking_style, :hidden_motivation, :scenario_description, :difficulty_level)
+                :speaking_style, :hidden_motivation, :scenario_description, :difficulty_level,
+                :hostility_level)
         """,
         {
             "key": card.key,
@@ -275,6 +304,7 @@ def insert_scenario(conn: sqlite3.Connection, card: PersonaCard) -> None:
             "hidden_motivation": card.hidden_motivation,
             "scenario_description": card.scenario_description,
             "difficulty_level": card.difficulty_level,
+            "hostility_level": card.hostility_level,
         },
     )
     conn.commit()

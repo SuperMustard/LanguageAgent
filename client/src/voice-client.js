@@ -9,7 +9,7 @@ export class VoiceSession {
     this.client = null;
   }
 
-  async connect(scenario) {
+  async connect(scenario, hostilityLevel) {
     const transport = new SmallWebRTCTransport();
     this.client = new PipecatClient({
       transport,
@@ -45,7 +45,10 @@ export class VoiceSession {
         enableDefaultIceServers: true,
         // 自定义数据必须包在 "body" 里，Pipecat runner 的 /start 只把这里的东西转成
         // runner_args.body 传给 bot()；塞在顶层（跟 transport 平级）会被直接丢弃。
-        body: { scenario },
+        // hostilityLevel 为空字符串（前端选了"场景默认"）时不传这个键，JSON.stringify
+        // 会自动丢掉 undefined 的属性，bot 端 _resolve_hostility_level() 就会落回
+        // 场景卡自己的默认值。
+        body: { scenario, hostility_level: hostilityLevel || undefined },
       },
     });
   }

@@ -17,6 +17,7 @@ SEED_SCENARIOS: list[PersonaCard] = [
         hidden_motivation="其实想放松，但嘴上不饶人；被真诚对待后会慢慢软化",
         scenario_description="客人刚进诊所，迟到了又找不到车位，一肚子气。你（学习者）是治疗师，要安抚并顺利开始 treatment。",
         difficulty_level="中级，语速正常，用日常口语",
+        hostility_level="中等",
     ),
     PersonaCard(
         key="interview_en",
@@ -28,5 +29,6 @@ SEED_SCENARIOS: list[PersonaCard] = [
         hidden_motivation="想判断候选人是否真的合适，会礼貌地深挖",
         scenario_description="一场30分钟的岗位面试，你（学习者）是候选人。",
         difficulty_level="中级偏上，会用一些职场惯用表达",
+        hostility_level="温和",
     ),
 ]

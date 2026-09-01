@@ -99,6 +99,7 @@ def list_scenarios_full() -> list[dict]:
             "hidden_motivation": c.hidden_motivation,
             "scenario_description": c.scenario_description,
             "difficulty_level": c.difficulty_level,
+            "hostility_level": c.hostility_level,
         }
         for c in cards
     ]

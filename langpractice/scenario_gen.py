@@ -7,6 +7,7 @@ import json
 import uuid
 from pathlib import Path
 
+from .config import DEFAULT_HOSTILITY_LEVEL, HOSTILITY_LEVELS
 from .llm.base import LLMClient, Message
 from .models import PersonaCard
 
@@ -59,6 +60,12 @@ def generate_persona_card(llm: LLMClient, description: str, language: str) -> Pe
     if missing:
         raise ValueError(f"场景生成结果缺字段: {missing}")
 
+    # hostility_level 不算硬性必填字段——LLM 偶尔可能漏给或给出不在四档里的值，
+    # 这种情况直接兜底成默认档，不为了这一个字段让整次生成失败。
+    hostility_level = payload.get("hostility_level")
+    if hostility_level not in HOSTILITY_LEVELS:
+        hostility_level = DEFAULT_HOSTILITY_LEVEL
+
     return PersonaCard(
         key=f"custom_{uuid.uuid4().hex[:8]}",
         language=language,
@@ -69,4 +76,5 @@ def generate_persona_card(llm: LLMClient, description: str, language: str) -> Pe
         hidden_motivation=payload["hidden_motivation"],
         scenario_description=payload["scenario_description"],
         difficulty_level=payload["difficulty_level"],
+        hostility_level=hostility_level,
     )

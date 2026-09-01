@@ -1,3 +1,5 @@
+import sqlite3
+
 from langpractice import db
 from langpractice.models import Expression, PersonaCard, ProPhrase, Word
 
@@ -177,6 +179,46 @@ def test_insert_and_fetch_scenario_roundtrip():
     assert fetched.key == card.key
     assert fetched.role_identity == card.role_identity
     assert fetched.scenario_description == card.scenario_description
+    assert fetched.hostility_level == "中等"  # PersonaCard 的默认值，_scenario_card 没覆盖
+
+
+def test_insert_and_fetch_scenario_roundtrip_with_explicit_hostility_level():
+    conn = db.connect(":memory:")
+    db.insert_scenario(conn, _scenario_card(hostility_level="极难缠"))
+    fetched = db.fetch_scenario(conn, "custom_abc123")
+    assert fetched.hostility_level == "极难缠"
+
+
+def test_migrate_scenarios_add_hostility_level_backfills_existing_rows():
+    # 模拟"本次改动之前建的库"：手写一张没有 hostility_level 列的 scenarios 表，
+    # 塞一行旧数据，再跑迁移函数，确认列被补上、旧行拿到默认值、能正常按 PersonaCard 读出来。
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        """
+        CREATE TABLE scenarios (
+            key TEXT PRIMARY KEY, language TEXT, target_language TEXT, role_identity TEXT,
+            emotional_state TEXT, speaking_style TEXT, hidden_motivation TEXT,
+            scenario_description TEXT, difficulty_level TEXT
+        )
+        """
+    )
+    conn.execute(
+        "INSERT INTO scenarios VALUES ('old_key', 'fr', 'French', 'a', 'b', 'c', 'd', 'e', 'f')"
+    )
+    conn.commit()
+
+    db._migrate_scenarios_add_hostility_level(conn)
+
+    row = conn.execute("SELECT * FROM scenarios WHERE key = 'old_key'").fetchone()
+    assert row["hostility_level"] == "中等"
+
+
+def test_migrate_scenarios_add_hostility_level_is_noop_when_column_exists():
+    conn = db.connect(":memory:")  # 新库走 SCHEMA，已经带这一列
+    db._migrate_scenarios_add_hostility_level(conn)  # 不应该报错（比如列已存在的 ALTER 冲突）
+    columns = {row["name"] for row in conn.execute("PRAGMA table_info(scenarios)")}
+    assert "hostility_level" in columns
 
 
 def test_fetch_scenario_missing_key_returns_none():

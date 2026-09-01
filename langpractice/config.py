@@ -19,6 +19,20 @@ EXPORT_DIR = Path(os.getenv(
 
 SUPPORTED_LANGUAGES = ("en", "fr")
 
+# 难缠程度旋钮（模块 2.5 配套，见 SPEC"难缠客户练习与配置分层"）：只有这四档，
+# 前端下拉框和场景生成都从这个常量取值，不额外做成 .env 可配置——档位是产品设计，
+# 不是运维参数。红线（满级也不能突破的底线）是写死在 persona_template.md 里的固定文字，
+# 不受这个常量影响。
+HOSTILITY_LEVELS = ("温和", "中等", "难缠", "极难缠")
+DEFAULT_HOSTILITY_LEVEL = "中等"
+
+# 口语侧诱导（induction.py）配额，见 SPEC"配置项"：INDUCTION_MAX_TARGETS 是一次诱导
+# 注入的目标总数上限（生词+病句+专业话术混合池，原来就是这个值，只是之前硬编码在
+# retrieve_induction_targets 的默认参数里）；INDUCTION_MIN_PHRASES 是其中保底来自
+# pro_phrases 的条数——防止话术被生词/病句挤掉（专业话术是使用者最想练的）。
+INDUCTION_MAX_TARGETS = int(os.getenv("INDUCTION_MAX_TARGETS", "2"))
+INDUCTION_MIN_PHRASES = int(os.getenv("INDUCTION_MIN_PHRASES", "1"))
+
 # voice_bot.py（Pipecat 语音 pipeline）必需，没配就连不上。
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "").strip() or None
 GROQ_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
