@@ -164,6 +164,18 @@ def delete_word(word_id: int) -> dict:
     return {"status": "deleted"}
 
 
+@app.delete("/pro_phrases/{phrase_id}")
+def delete_pro_phrase(phrase_id: int) -> dict:
+    conn = db.connect()
+    try:
+        deleted = db.delete_pro_phrase(conn, phrase_id)
+    finally:
+        conn.close()
+    if not deleted:
+        raise HTTPException(404, f"pro_phrase {phrase_id} not found")
+    return {"status": "deleted"}
+
+
 @app.get("/records/{language}")
 def list_records(language: str) -> dict:
     """给历史记录管理页用——跟 /export 不同，这里带 id/mastery/last_practiced，
@@ -175,6 +187,7 @@ def list_records(language: str) -> dict:
     try:
         expressions = db.fetch_expressions(conn, language)
         words = db.fetch_words(conn, language)
+        pro_phrases = db.fetch_pro_phrases(conn, language)
     finally:
         conn.close()
 
@@ -201,6 +214,19 @@ def list_records(language: str) -> dict:
                 "last_practiced": w.last_practiced,
             }
             for w in words
+        ],
+        "pro_phrases": [
+            {
+                "id": p.id,
+                "scenario_type": p.scenario_type,
+                "phrase": p.phrase,
+                "meaning": p.meaning,
+                "dimension": p.dimension,
+                "usage_note": p.usage_note,
+                "mastery": p.mastery,
+                "last_practiced": p.last_practiced,
+            }
+            for p in pro_phrases
         ],
     }
 

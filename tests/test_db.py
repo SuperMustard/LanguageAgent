@@ -1,5 +1,5 @@
 from langpractice import db
-from langpractice.models import Expression, PersonaCard, Word
+from langpractice.models import Expression, PersonaCard, ProPhrase, Word
 
 
 def test_insert_and_fetch_expressions_roundtrip():
@@ -96,6 +96,59 @@ def test_delete_word_removes_row_and_reports_success():
 def test_delete_word_missing_id_returns_false():
     conn = db.connect(":memory:")
     assert db.delete_word(conn, 9999) is False
+
+
+def test_insert_and_fetch_pro_phrases_roundtrip():
+    conn = db.connect(":memory:")
+    phrase = ProPhrase(
+        phrase="Je comprends que ce soit frustrant, laissez-moi voir ce qu'on peut faire.",
+        meaning="我理解这确实让人沮丧，让我看看能做些什么。",
+        dimension="同理承接",
+        usage_note="先接住情绪，再引导到解决方案。",
+        language="fr",
+        scenario_type="clinic_fr",
+        mastery=0,
+        last_practiced="2026-08-28T00:00:00+00:00",
+    )
+    db.insert_pro_phrases(conn, [phrase])
+
+    fetched = db.fetch_pro_phrases(conn, "fr")
+    assert len(fetched) == 1
+    assert fetched[0].phrase == phrase.phrase
+    assert fetched[0].scenario_type == "clinic_fr"
+    assert fetched[0].id is not None
+
+    assert db.fetch_pro_phrases(conn, "en") == []
+
+
+def test_insert_pro_phrases_sets_id_on_each_object():
+    conn = db.connect(":memory:")
+    p1 = ProPhrase(phrase="a", meaning="a", dimension="设立边界", usage_note="a",
+                    language="en", scenario_type="clinic_fr",
+                    last_practiced="2026-08-28T00:00:00+00:00")
+    p2 = ProPhrase(phrase="b", meaning="b", dimension="设立边界", usage_note="b",
+                    language="en", scenario_type="clinic_fr",
+                    last_practiced="2026-08-28T00:00:00+00:00")
+    db.insert_pro_phrases(conn, [p1, p2])
+    assert p1.id is not None
+    assert p2.id is not None
+    assert p1.id != p2.id
+
+
+def test_delete_pro_phrase_removes_row_and_reports_success():
+    conn = db.connect(":memory:")
+    p = ProPhrase(phrase="a", meaning="a", dimension="设立边界", usage_note="a",
+                  language="en", scenario_type="clinic_fr",
+                  last_practiced="2026-08-28T00:00:00+00:00")
+    db.insert_pro_phrases(conn, [p])
+
+    assert db.delete_pro_phrase(conn, p.id) is True
+    assert db.fetch_pro_phrases(conn, "en") == []
+
+
+def test_delete_pro_phrase_missing_id_returns_false():
+    conn = db.connect(":memory:")
+    assert db.delete_pro_phrase(conn, 9999) is False
 
 
 def _scenario_card(**overrides):

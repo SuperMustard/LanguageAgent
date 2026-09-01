@@ -172,20 +172,28 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments) -> Non
 
         now_iso = _now_iso()
         transcript = _build_transcript(context)
-        result = debrief.run_debrief(
-            debrief_llm,
-            target_language=card.target_language,
-            language_code=card.language,
-            transcript=transcript,
-            now_iso=now_iso,
-        )
 
         conn = db.connect()
         try:
+            # 话术去重（SPEC 模块 2.5）：产出前把这门语言已在库的话术传进 prompt，
+            # 让 LLM 语义上避开推荐过的说法，数据库层面不用另写判重逻辑。
+            existing_phrases = [p.phrase for p in db.fetch_pro_phrases(conn, card.language)]
+            result = debrief.run_debrief(
+                debrief_llm,
+                target_language=card.target_language,
+                language_code=card.language,
+                transcript=transcript,
+                now_iso=now_iso,
+                scenario_type=card.key,
+                existing_phrases=existing_phrases,
+            )
+
             if result.sentences:
                 db.insert_expressions(conn, result.sentences)
             if result.words:
                 db.insert_words(conn, result.words)
+            if result.pro_phrases:
+                db.insert_pro_phrases(conn, result.pro_phrases)
 
             # 口语侧诱导复盘：这场开场前注入的隐藏目标有没有被用上，更新掌握度。
             # 独立于 Debrief 的另一次非流式调用，跟角色扮演/纠错分离铁律无关——这两次
@@ -212,6 +220,16 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments) -> Non
                 for e in result.sentences
             ],
             "words": [{"id": w.id, "word": w.word, "meaning": w.meaning} for w in result.words],
+            "pro_phrases": [
+                {
+                    "id": p.id,
+                    "phrase": p.phrase,
+                    "meaning": p.meaning,
+                    "dimension": p.dimension,
+                    "usage_note": p.usage_note,
+                }
+                for p in result.pro_phrases
+            ],
         }
         await rtvi.send_server_response(message, payload)
 

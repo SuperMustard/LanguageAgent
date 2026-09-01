@@ -29,9 +29,26 @@ class Word:
 
 
 @dataclass
+class ProPhrase:
+    """一条专业应对话术记录（模块 2.5）。phrase/meaning/language 为未来导出预留，
+    现在只进 agent 自己的诱导循环，不导出给 langhelper（见 CLAUDE.md 核心约束 5）。"""
+
+    phrase: str
+    meaning: str
+    dimension: str  # 同理承接/设立边界/降级冲突/重定向解决/vouvoiement
+    usage_note: str
+    language: str
+    scenario_type: str
+    mastery: int = 0
+    last_practiced: str = ""
+    id: int | None = None
+
+
+@dataclass
 class DebriefResult:
     sentences: list[Expression] = field(default_factory=list)
     words: list[Word] = field(default_factory=list)
+    pro_phrases: list[ProPhrase] = field(default_factory=list)
 
 
 @dataclass

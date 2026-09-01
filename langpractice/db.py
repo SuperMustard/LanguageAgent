@@ -2,7 +2,7 @@ import sqlite3
 from pathlib import Path
 
 from .config import DB_PATH
-from .models import Expression, PersonaCard, Word
+from .models import Expression, PersonaCard, ProPhrase, Word
 from .seed_scenarios import SEED_SCENARIOS
 
 SCHEMA = """
@@ -24,6 +24,19 @@ CREATE TABLE IF NOT EXISTS words (
     language       TEXT NOT NULL CHECK(language IN ('en','fr')),
     word           TEXT NOT NULL,
     meaning        TEXT,
+    mastery        INTEGER NOT NULL DEFAULT 0,
+    last_practiced TEXT NOT NULL,
+    created_at     TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS pro_phrases (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    language       TEXT NOT NULL CHECK(language IN ('en','fr')),
+    scenario_type  TEXT NOT NULL,
+    phrase         TEXT NOT NULL,
+    meaning        TEXT,
+    dimension      TEXT NOT NULL,
+    usage_note     TEXT,
     mastery        INTEGER NOT NULL DEFAULT 0,
     last_practiced TEXT NOT NULL,
     created_at     TEXT NOT NULL DEFAULT (datetime('now'))
@@ -105,6 +118,55 @@ def insert_words(conn: sqlite3.Connection, words: list[Word]) -> None:
         )
         w.id = cursor.lastrowid
     conn.commit()
+
+
+def insert_pro_phrases(conn: sqlite3.Connection, phrases: list[ProPhrase]) -> None:
+    """同 insert_expressions/insert_words：逐条插入把 id 写回对象，供前端删除用。"""
+    for p in phrases:
+        cursor = conn.execute(
+            """
+            INSERT INTO pro_phrases (language, scenario_type, phrase, meaning, dimension, usage_note, mastery, last_practiced)
+            VALUES (:language, :scenario_type, :phrase, :meaning, :dimension, :usage_note, :mastery, :last_practiced)
+            """,
+            {
+                "language": p.language,
+                "scenario_type": p.scenario_type,
+                "phrase": p.phrase,
+                "meaning": p.meaning,
+                "dimension": p.dimension,
+                "usage_note": p.usage_note,
+                "mastery": p.mastery,
+                "last_practiced": p.last_practiced,
+            },
+        )
+        p.id = cursor.lastrowid
+    conn.commit()
+
+
+def fetch_pro_phrases(conn: sqlite3.Connection, language: str) -> list[ProPhrase]:
+    rows = conn.execute(
+        "SELECT * FROM pro_phrases WHERE language = ? ORDER BY id", (language,)
+    ).fetchall()
+    return [
+        ProPhrase(
+            id=r["id"],
+            language=r["language"],
+            scenario_type=r["scenario_type"],
+            phrase=r["phrase"],
+            meaning=r["meaning"] or "",
+            dimension=r["dimension"],
+            usage_note=r["usage_note"] or "",
+            mastery=r["mastery"],
+            last_practiced=r["last_practiced"],
+        )
+        for r in rows
+    ]
+
+
+def delete_pro_phrase(conn: sqlite3.Connection, phrase_id: int) -> bool:
+    cursor = conn.execute("DELETE FROM pro_phrases WHERE id = ?", (phrase_id,))
+    conn.commit()
+    return cursor.rowcount > 0
 
 
 def delete_expression(conn: sqlite3.Connection, expression_id: int) -> bool:

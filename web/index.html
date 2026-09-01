@@ -264,6 +264,7 @@
     <h2>Debrief 诊断</h2>
     <div id="debrief-sentences"></div>
     <div id="debrief-words"></div>
+    <div id="debrief-pro-phrases"></div>
   </div>
 
   <div class="panel">
@@ -311,6 +312,7 @@ const el = {
   debriefPanel: document.getElementById('debrief-panel'),
   debriefSentences: document.getElementById('debrief-sentences'),
   debriefWords: document.getElementById('debrief-words'),
+  debriefProPhrases: document.getElementById('debrief-pro-phrases'),
   exportFrBtn: document.getElementById('export-fr-btn'),
   exportEnBtn: document.getElementById('export-en-btn'),
   exportResult: document.getElementById('export-result'),
@@ -453,7 +455,7 @@ function toggleMic() {
 }
 
 async function deleteDiagnosis(kind, id, container) {
-  // kind: 'expressions' | 'words'。识别错误导致的假诊断可以直接删掉，不用留着。
+  // kind: 'expressions' | 'words' | 'pro_phrases'。识别错误导致的假诊断可以直接删掉，不用留着。
   if (id == null) return;
   const btn = container.querySelector('button');
   if (btn) btn.disabled = true;
@@ -471,6 +473,7 @@ async function deleteDiagnosis(kind, id, container) {
 function renderDebrief(data) {
   el.debriefSentences.innerHTML = '';
   el.debriefWords.innerHTML = '';
+  el.debriefProPhrases.innerHTML = '';
 
   if (data.sentences.length === 0) {
     el.debriefSentences.innerHTML = '<div class="sub">这一场没有明显病句，很不错。</div>';
@@ -514,6 +517,31 @@ function renderDebrief(data) {
       chip.appendChild(label);
       chip.appendChild(deleteBtn);
       el.debriefWords.appendChild(chip);
+    }
+  }
+
+  if (data.pro_phrases.length > 0) {
+    const title = document.createElement('div');
+    title.className = 'sub';
+    title.textContent = '专业应对话术：';
+    el.debriefProPhrases.appendChild(title);
+    for (const p of data.pro_phrases) {
+      const card = document.createElement('div');
+      card.className = 'card';
+      card.innerHTML = `
+        <div class="zh">${p.phrase}</div>
+        <div class="note">${p.meaning}</div>
+        <div class="note">${p.usage_note}</div>
+        <span class="pattern">${p.dimension}</span>
+      `;
+      const deleteBtn = document.createElement('button');
+      deleteBtn.type = 'button';
+      deleteBtn.className = 'card-delete-btn';
+      deleteBtn.title = '删除这条推荐';
+      deleteBtn.textContent = '✕';
+      deleteBtn.addEventListener('click', () => deleteDiagnosis('pro_phrases', p.id, card));
+      card.appendChild(deleteBtn);
+      el.debriefProPhrases.appendChild(card);
     }
   }
 }
