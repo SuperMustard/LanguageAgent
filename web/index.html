@@ -296,6 +296,13 @@
         </div>
         <textarea id="export-words" readonly></textarea>
       </div>
+      <div class="export-block">
+        <div class="row" style="justify-content:space-between">
+          <label class="sub">表达块 JSON（fr_phrases.json / en_phrases.json）</label>
+          <button id="copy-phrases-btn" type="button">复制</button>
+        </div>
+        <textarea id="export-phrases" readonly></textarea>
+      </div>
       <div id="export-file-paths" class="sub"></div>
     </div>
   </div>
@@ -326,9 +333,11 @@ const el = {
   exportResult: document.getElementById('export-result'),
   exportSentences: document.getElementById('export-sentences'),
   exportWords: document.getElementById('export-words'),
+  exportPhrases: document.getElementById('export-phrases'),
   exportFilePaths: document.getElementById('export-file-paths'),
   copySentencesBtn: document.getElementById('copy-sentences-btn'),
   copyWordsBtn: document.getElementById('copy-words-btn'),
+  copyPhrasesBtn: document.getElementById('copy-phrases-btn'),
   newScenarioToggleBtn: document.getElementById('new-scenario-toggle-btn'),
   newScenarioForm: document.getElementById('new-scenario-form'),
   newScenarioDescription: document.getElementById('new-scenario-description'),
@@ -584,7 +593,8 @@ async function exportLanguage(language) {
     const data = await res.json();
     el.exportSentences.value = data.sentences_json;
     el.exportWords.value = data.words_txt;
-    el.exportFilePaths.textContent = `同时已写入磁盘：${data.sentences_file} ／ ${data.words_file}`;
+    el.exportPhrases.value = data.phrases_json;
+    el.exportFilePaths.textContent = `同时已写入磁盘：${data.sentences_file} ／ ${data.words_file} ／ ${data.phrases_file}`;
     el.exportResult.style.display = 'block';
     setStatus(`已导出 ${language}，可以复制粘进 langhelper 了。`);
   } catch (e) {
@@ -636,6 +646,7 @@ el.exportFrBtn.addEventListener('click', () => exportLanguage('fr'));
 el.exportEnBtn.addEventListener('click', () => exportLanguage('en'));
 el.copySentencesBtn.addEventListener('click', () => copyTextarea(el.exportSentences, el.copySentencesBtn));
 el.copyWordsBtn.addEventListener('click', () => copyTextarea(el.exportWords, el.copyWordsBtn));
+el.copyPhrasesBtn.addEventListener('click', () => copyTextarea(el.exportPhrases, el.copyPhrasesBtn));
 el.newScenarioToggleBtn.addEventListener('click', toggleNewScenarioForm);
 el.newScenarioGenerateBtn.addEventListener('click', generateScenario);
 

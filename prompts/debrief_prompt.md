@@ -87,11 +87,11 @@
 - 给每条 words 记录补上同样三个字段，存 `words` 表
 - 给每条 pro_phrases 记录补上 `language`、`scenario_type`（本场场景的 key）、`mastery=0`、
   `last_practiced=now`，存 `pro_phrases` 表
-- 导出时把 sentences/words 的内部字段剥离，只留 langhelper 认的字段；
-  **pro_phrases 暂不导出**（见 CLAUDE.md 核心约束 5），只进 agent 自己的诱导循环
+- 导出时把 sentences/words/pro_phrases 的内部字段剥离，只留 langhelper 认的字段
 
 ## 与导出的对齐
 
 Debrief 的 `sentences` 元素字段 = langhelper 病句卡五字段，**完全一致**，导出零映射。
 `words` 元素导出时转成纯文本 `word|meaning` 每行一条。
-`pro_phrases` 不接导出管道。
+`pro_phrases` 元素导出成「表达块卡」三字段：`phrase`/`meaning` 原样保留，`usage_note`
+降级进 `note`；`dimension`/`scenario_type` 剥离（只在诱导循环里用）。

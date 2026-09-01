@@ -30,8 +30,9 @@ class Word:
 
 @dataclass
 class ProPhrase:
-    """一条专业应对话术记录（模块 2.5）。phrase/meaning/language 为未来导出预留，
-    现在只进 agent 自己的诱导循环，不导出给 langhelper（见 CLAUDE.md 核心约束 5）。"""
+    """一条专业应对话术记录（模块 2.5）。除了进 agent 自己的诱导循环，phrase/meaning/
+    usage_note 还会导出成「表达块卡」（export.pro_phrases_to_json）；dimension/
+    scenario_type/mastery/last_practiced 是 agent 内部字段，导出时剥离。"""
 
     phrase: str
     meaning: str

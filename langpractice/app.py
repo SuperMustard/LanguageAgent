@@ -241,13 +241,18 @@ def export_language(language: str) -> dict:
     try:
         expressions = db.fetch_expressions(conn, language)
         words = db.fetch_words(conn, language)
+        pro_phrases = db.fetch_pro_phrases(conn, language)
     finally:
         conn.close()
 
-    sentences_path, words_path = export.write_export_files(language, expressions, words)
+    sentences_path, words_path, phrases_path = export.write_export_files(
+        language, expressions, words, pro_phrases
+    )
     return {
         "sentences_file": str(sentences_path),
         "words_file": str(words_path),
+        "phrases_file": str(phrases_path),
         "sentences_json": export.expressions_to_json(expressions),
         "words_txt": export.words_to_txt(words),
+        "phrases_json": export.pro_phrases_to_json(pro_phrases),
     }

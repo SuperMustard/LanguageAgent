@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 
 from .config import EXPORT_DIR
-from .models import Expression, Word
+from .models import Expression, ProPhrase, Word
 
 SENTENCE_FIELDS = ("zh", "en_wrong", "en_correct", "error_note", "pattern")
 
@@ -26,15 +26,34 @@ def words_to_txt(words: list[Word]) -> str:
     return "\n".join(lines) + ("\n" if lines else "")
 
 
+def pro_phrases_to_json(phrases: list[ProPhrase]) -> str:
+    """按 langhelper 表达块卡契约：只含 phrase/meaning/note 三个字段（SPEC"导出格式契约 →
+    表达块卡"）。`usage_note` 降级进 `note`；`dimension`/`scenario_type`/language/mastery/
+    last_practiced 等 agent 内部字段一律剥离——它们只在诱导循环里有意义。按 phrase
+    大小写不敏感去重，保留第一次出现的写法（跟 words_to_txt 的去重规则一致）。"""
+    seen: set[str] = set()
+    data = []
+    for p in phrases:
+        key = p.phrase.strip().lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        data.append({"phrase": p.phrase, "meaning": p.meaning, "note": p.usage_note})
+    return json.dumps(data, ensure_ascii=False, indent=2)
+
+
 def write_export_files(
     language: str,
     expressions: list[Expression],
     words: list[Word],
+    pro_phrases: list[ProPhrase],
     out_dir: Path = EXPORT_DIR,
-) -> tuple[Path, Path]:
+) -> tuple[Path, Path, Path]:
     out_dir.mkdir(parents=True, exist_ok=True)
     sentences_path = out_dir / f"{language}_sentences.json"
     words_path = out_dir / f"{language}_words.txt"
+    phrases_path = out_dir / f"{language}_phrases.json"
     sentences_path.write_text(expressions_to_json(expressions), encoding="utf-8")
     words_path.write_text(words_to_txt(words), encoding="utf-8")
-    return sentences_path, words_path
+    phrases_path.write_text(pro_phrases_to_json(pro_phrases), encoding="utf-8")
+    return sentences_path, words_path, phrases_path

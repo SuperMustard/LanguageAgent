@@ -86,27 +86,30 @@ import`personas.py` 成环）。
   - 全部用真实 Groq API + claude-in-chrome 在真实运行的 app 上验证过：生成场景、
     场景管理页正确列出（含种子场景，无来源标记）、删除一条种子场景级别的测试数据
     后确认真的从 `/scenarios/full` 里消失、主页场景下拉框仍能正常工作。
+- **专业应对话术推荐（模块 2.5）已全部实现，含导出**：学习素材的第三类，灵魂是"用专业方式
+  处理难缠客户"（诊所/按摩环境）。完整规格见 SPEC 模块 2.5 + 核心约束 5/6。
+  - **并入 Debrief 那一次调用产出**（没新增调用）：输出从 `{sentences, words}` 扩成
+    `{sentences, words, pro_phrases}`，分别落三张表（`prompts/debrief_prompt.md`）。
+  - **新表 `pro_phrases`**（db.py，操作同构于 expressions/words）：字段见「关键字段名」。
+    按专业维度组织（同理承接/设立边界/降级冲突/重定向解决/vouvoiement），**锚定 transcript**
+    （针对刚才真实应对的刁难给更专业说法，不凭空罗列）。
+  - **复用现有诱导+掌握度引擎**：`induction.py::retrieve_induction_targets` 把 `pro_phrases`
+    纳入第三来源，用保底+上限配比（`INDUCTION_MAX_TARGETS`/`INDUCTION_MIN_PHRASES`，
+    config.py，`.env` 可覆盖）保证话术有配额、不被生词淹没；防重复因此白送（已掌握/最近
+    推过的检索时自然排除），产出前再把已在库话术传进 prompt 做语义去重
+    （`debrief.render_debrief_prompt` 的 `existing_phrases` 参数）。
+  - **角色卡"难缠程度"字段**：`models.py` 的 `PersonaCard.hostility_level` + `scenarios`
+    表存默认（`config.HOSTILITY_LEVELS` 四档，`DEFAULT_HOSTILITY_LEVEL`）+ 前端每次可选，
+    经 `/start` 的 `body` 传入（`voice_bot.py::_resolve_hostility_level`）。红线写死在
+    `prompts/persona_template.md` 铁律第 4 条，不受这个旋钮影响（对应约束 6）。
+  - **导出：已实现**，走「表达块卡」——`export.py::pro_phrases_to_json` 把 `phrase`/`meaning`
+    保留、`usage_note` 降级进 `note`，剥离 `dimension`/`scenario_type`/`mastery`/
+    `last_practiced`，`GET /export/{language}` 一并写 `{lang}_phrases.json`；langhelper 那边
+    的"Import phrases"入口和 `parse_phrases` 尚待对方实现，agent 侧的产出管道已经打通到位
+    （对应约束 5，已更新）。
+  - history 页 + `/records/{language}` 把 `pro_phrases` 纳入查看/删除。
+  - 单元测试：`tests/test_export.py` 覆盖 `pro_phrases_to_json` 的字段裁剪/去重/空输入。
 - 改动历史看 `git log`，这里不重复维护——已知的非显而易见的坑记在下面「实现踩坑记录」。
-
-### 下一个要做的功能（规划已定，尚未动手）
-
-**专业应对话术推荐**——学习素材的第三类，灵魂是"用专业方式处理难缠客户"（诊所/按摩环境）。
-完整规格见 SPEC 模块 2.5 + 核心约束 5/6。要点：
-
-- **并入 Debrief 那一次调用产出**（不新增调用）：输出从 `{sentences, words}` 扩成
-  `{sentences, words, pro_phrases}`，分别落三张表。
-- **新表 `pro_phrases`**（db.py，操作同构于现有两表）：字段见「关键字段名」。按专业维度组织
-  （同理承接/设立边界/降级冲突/重定向解决/vouvoiement），**锚定 transcript**（针对刚才真实
-  应对的刁难给更专业说法，不凭空罗列）。
-- **复用现有诱导+掌握度引擎**：`induction.py` 的 `retrieve_induction_targets` 要**纳入
-  `pro_phrases` 作第三来源**，用保底+上限配比（见配置项）保证话术有配额、不被生词淹没。
-  防重复因此白送（已掌握/最近推过的检索时自然排除）；产出前再把已在库话术传进 prompt 做语义去重。
-- **角色卡加"难缠程度"字段**（models.py/personas.py + `scenarios` 表存默认 + 前端每次可选，
-  经 `/start` 的 `body` 传入）。
-- **暂不导出**（约束 5）。
-- **配置项**（config.py，`.env` 可覆盖）：`INDUCTION_MAX_TARGETS`（总数上限）、
-  `INDUCTION_MIN_PHRASES`（话术保底条数）。
-- history 页 + `/records/{language}` 要把 `pro_phrases` 也纳入查看/删除。
 
 ## 技术栈
 
@@ -136,9 +139,11 @@ import`personas.py` 成环）。
 4. **导出格式必须严格匹配 langhelper 导入器**（见 SPEC 导出格式契约）。
    病句是 JSON 五字段数组，生词是纯文本 `词|义`。字段名照抄，不自创。
 
-5. **专业话术（`pro_phrases`）暂不导出。** langhelper 只支持病句卡/单词卡两种卡型，
-   整句话术塞进单词卡会错配。等 langhelper 支持"话术卡"后再接导出管道。字段（`phrase`/
-   `meaning`/`language`）已为导出预留，别现在硬塞进单词卡通道，也别回头才想起补字段。
+5. **专业话术（`pro_phrases`）导出走独立的「表达块卡」格式，不进病句卡/单词卡通道。**
+   langhelper 只有病句卡/单词卡两种卡型时，整句话术塞进单词卡会错配（单词卡的例句/翻译
+   诱导玩法对整句话术不合适）；`{lang}_phrases.json` 是第三种卡型专收整块表达，字段只有
+   `phrase`/`meaning`/`note`（`usage_note` 降级进 `note`），`dimension`/`scenario_type`/
+   `mastery`/`last_practiced` 等内部字段导出时剥离。实现见 `export.py::pro_phrases_to_json`。
 
 6. **难缠红线是铁律，写死为常量，不做配置。** 即使选"极难缠"，角色也不能突破
    "仍可被专业方式化解"的边界（不无理取闹到对话崩溃、不人身攻击、始终留有专业应对空间）。
@@ -162,11 +167,14 @@ import`personas.py` 成环）。
 
 生词卡：`word` `meaning`
 
+表达块卡 langhelper 字段：`phrase` `meaning` `note`（导出唯一认这三个字段，见「导出格式契约」）
+
 专业话术表 `pro_phrases`：`language` `scenario_type` `phrase` `meaning` `dimension`
 （同理承接/设立边界/降级冲突/重定向解决/vouvoiement）`usage_note` `mastery` `last_practiced`
-（暂不导出；`phrase`/`meaning`/`language` 为未来导出预留）
+（导出成表达块卡：`phrase`/`meaning` 原样保留，`usage_note` 降级进 `note`；
+`scenario_type`/`dimension`/`mastery`/`last_practiced` 是内部字段，导出时剥离）
 
-agent 内部额外字段：`language` `mastery` `last_practiced`（导出病句/生词时剥离，不进 langhelper 文件）
+agent 内部额外字段：`language` `mastery` `last_practiced`（导出病句/生词/话术时剥离，不进 langhelper 文件）
 
 ## 多平台演进路线（规划中，尚未动手）
 
