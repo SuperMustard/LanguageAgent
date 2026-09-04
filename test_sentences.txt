@@ -1,0 +1,42 @@
+test_sentences = [
+    # 1. 基础短语动词——最该拎出来的
+    "I need to wind down before bed, so I usually turn off all my screens an hour early.",
+    #   期望语块: wind down, turn off
+
+    # 2. 通用搭配 vs 句子特有组合——最易错点
+    "She slipped into her dinosaur-print onesie and curled up on the couch.",
+    #   期望语块: curl up (通用); 陷阱: dinosaur-print onesie 是句子特有，不该拎
+
+    # 3. 生词 + 语块混在一句——考分类
+    "The clinician warned that chronic insomnia can take a heavy toll on your health.",
+    #   期望生词: clinician, insomnia; 期望语块: take a toll on
+
+    # 4. 地道搭配而非字面——考"搭配感"
+    "It took me a while to come to terms with the fact that I'd been made redundant.",
+    #   期望语块: come to terms with, be made redundant; 陷阱: took a while 边界模糊
+
+    # 5. 空句——考会不会硬拎
+    "He opened the door and walked into the room.",
+    #   期望: 啥都没有，应返回空（全是基础词、无值得学的搭配）
+
+    # 6. 正式语域搭配——贴合职场/诊所场景
+    "We'd like to address your concerns and reach a mutually acceptable solution.",
+    #   期望语块: address concerns, reach a solution, mutually acceptable
+
+    # 7. 弱读功能词组成的语块——你可能"听不出来"的那类
+    "You should've given it a shot before writing it off completely.",
+    #   期望语块: give it a shot, write off; 附带看它认不认 should've 缩读
+
+    # 8. 一句多个语块——考完整性（会不会只拎一个漏其余）
+    "To be honest, I'm inclined to put it off until we've ironed out the details.",
+    #   期望语块: to be honest, be inclined to, put off, iron out
+
+    # 9. 单个生词为主——考它不会把普通词硬凑成搭配
+    "The therapist emphasized the importance of a consistent sleep schedule.",
+    #   期望生词: (therapist 若算); 期望语块: sleep schedule (弱), consistent...schedule
+    #   陷阱: emphasize the importance of 算不算？看它尺度
+
+    # 10. 情绪/诊所应对腔——贴合你的核心场景
+    "I completely understand your frustration, and I want to make this right for you.",
+    #   期望语块: make it right; 半话术: I understand your frustration (同理承接)
+]
