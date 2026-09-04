@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from . import db
-from .config import INDUCTION_MAX_TARGETS, INDUCTION_MIN_PHRASES
+from .config import INDUCTION_MAX_TARGETS, INDUCTION_MIN_COLLOCATIONS, INDUCTION_MIN_PHRASES
 from .llm.base import LLMClient, Message
 
 _REVIEW_TEMPLATE_PATH = Path(__file__).resolve().parent.parent / "prompts" / "induction_review_prompt.md"
@@ -25,7 +25,7 @@ _Candidate = tuple[int, str, "InductionTarget"]
 @dataclass
 class InductionTarget:
     id: int
-    kind: str  # "word" | "expression" | "pro_phrase" —— 决定复盘后调哪张表的 mastery
+    kind: str  # "word" | "expression" | "pro_phrase" | "collocation" —— 决定复盘后调哪张表的 mastery
     label: str  # 注入 persona 提示词、也给复盘 prompt 用的展示文本
 
 
@@ -65,32 +65,92 @@ def _pro_phrase_candidates(conn: sqlite3.Connection, language: str) -> list[_Can
     return candidates
 
 
+def _collocation_candidates(conn: sqlite3.Connection, language: str) -> list[_Candidate]:
+    """常规（历史）通道候选池——排除"今日通道"会覆盖的那批（今天刚精听提炼进库、还没被
+    诱导过的 mastery=0 collocation，见 retrieve_today_collocations），避免同一条被两条
+    通道重复选中、重复消耗名额。"""
+    candidates = []
+    for row in conn.execute(
+        """
+        SELECT id, phrase, meaning, mastery, last_practiced FROM collocations
+        WHERE language = ?
+          AND NOT (mastery = 0 AND last_practiced = '' AND date(created_at) = date('now'))
+        """,
+        (language,),
+    ):
+        label = (
+            f"语块「{row['phrase']}」"
+            + (f"（{row['meaning']}）" if row["meaning"] else "")
+            + "，设计语境让学习者有机会自然用出这个搭配"
+        )
+        candidates.append(
+            (row["mastery"], row["last_practiced"], InductionTarget(row["id"], "collocation", label))
+        )
+    return candidates
+
+
+def retrieve_today_collocations(conn: sqlite3.Connection, language: str) -> list[InductionTarget]:
+    """今日通道（SPEC 模块 3）：当天精听提炼（模块 4）刚进库、mastery=0 的 collocation，
+    作为高优先级隐藏目标额外注入当天那场对话——不占 retrieve_induction_targets 的常规
+    配额，调用方（voice_bot.py）直接把这个函数的结果拼接在 retrieve_induction_targets
+    的返回值之后。"""
+    targets = []
+    for row in conn.execute(
+        """
+        SELECT id, phrase, meaning FROM collocations
+        WHERE language = ? AND mastery = 0 AND last_practiced = '' AND date(created_at) = date('now')
+        ORDER BY id
+        """,
+        (language,),
+    ):
+        label = (
+            f"语块「{row['phrase']}」"
+            + (f"（{row['meaning']}）" if row["meaning"] else "")
+            + "，今天刚精听提炼出来，设计语境让学习者有机会自然用出这个搭配"
+        )
+        targets.append(InductionTarget(row["id"], "collocation", label))
+    return targets
+
+
 def retrieve_induction_targets(
     conn: sqlite3.Connection,
     language: str,
     limit: int = INDUCTION_MAX_TARGETS,
     min_phrases: int = INDUCTION_MIN_PHRASES,
+    min_collocations: int = INDUCTION_MIN_COLLOCATIONS,
 ) -> list[InductionTarget]:
-    """返回最多 limit 条候选（生词 + 病句地道说法 + 专业应对话术混在一起挑），
+    """返回最多 limit 条候选（生词 + 病句地道说法 + 专业应对话术 + 精听语块混在一起挑），
     按 (mastery, last_practiced) 升序——最久没练/掌握度最低的排前面。
 
-    三个来源用"保底 + 上限"配比（SPEC 模块 2.5）：先从 pro_phrases 池里按同样的排序
-    规则保底选出最多 min_phrases 条（池子不够就有多少选多少，绝不因为凑数选已掌握的），
-    剩下的名额从三个来源的全部候选（含未被保底选中的话术）混合竞争，避免专业话术被
-    生词/病句挤掉，同时不让保底把名额浪费在"根本没有话术可推"的语言上。"""
+    四个来源用"保底 + 上限"配比（SPEC 模块 2.5/4）：先从 pro_phrases 池保底选出最多
+    min_phrases 条，再从 collocation 池（今日通道那批已被 _collocation_candidates 排除）
+    保底选出最多 min_collocations 条（池子不够就有多少选多少，绝不因为凑数选已掌握的），
+    pro_phrases 保底优先于 collocation（专业话术是使用者最想练的能力）。剩下的名额从四个
+    来源的全部候选（含未被保底选中的话术/语块）混合竞争，避免专业话术/语块被生词/病句挤掉，
+    同时不让保底把名额浪费在"根本没货可推"的语言上。"""
     word_pool = _word_candidates(conn, language)
     expression_pool = _expression_candidates(conn, language)
     phrase_pool = sorted(_pro_phrase_candidates(conn, language), key=lambda c: (c[0], c[1]))
+    collocation_pool = sorted(_collocation_candidates(conn, language), key=lambda c: (c[0], c[1]))
 
-    guaranteed_count = min(min_phrases, limit, len(phrase_pool))
-    guaranteed = phrase_pool[:guaranteed_count]
+    guaranteed_phrases_count = min(min_phrases, limit, len(phrase_pool))
+    guaranteed_phrases = phrase_pool[:guaranteed_phrases_count]
 
-    remaining_slots = limit - guaranteed_count
-    remaining_pool = word_pool + expression_pool + phrase_pool[guaranteed_count:]
+    remaining_after_phrases = limit - guaranteed_phrases_count
+    guaranteed_collocations_count = min(min_collocations, remaining_after_phrases, len(collocation_pool))
+    guaranteed_collocations = collocation_pool[:guaranteed_collocations_count]
+
+    remaining_slots = remaining_after_phrases - guaranteed_collocations_count
+    remaining_pool = (
+        word_pool
+        + expression_pool
+        + phrase_pool[guaranteed_phrases_count:]
+        + collocation_pool[guaranteed_collocations_count:]
+    )
     remaining_pool.sort(key=lambda c: (c[0], c[1]))
     fill = remaining_pool[:remaining_slots]
 
-    return [target for _, _, target in guaranteed + fill]
+    return [target for _, _, target in guaranteed_phrases + guaranteed_collocations + fill]
 
 
 def format_induction_targets(targets: list[InductionTarget]) -> str:
@@ -175,5 +235,7 @@ def apply_mastery_updates(
             db.adjust_word_mastery(conn, target.id, delta, now_iso)
         elif target.kind == "pro_phrase":
             db.adjust_pro_phrase_mastery(conn, target.id, delta, now_iso)
+        elif target.kind == "collocation":
+            db.adjust_collocation_mastery(conn, target.id, delta, now_iso)
         else:
             db.adjust_expression_mastery(conn, target.id, delta, now_iso)

@@ -33,6 +33,14 @@ DEFAULT_HOSTILITY_LEVEL = "中等"
 INDUCTION_MAX_TARGETS = int(os.getenv("INDUCTION_MAX_TARGETS", "2"))
 INDUCTION_MIN_PHRASES = int(os.getenv("INDUCTION_MIN_PHRASES", "1"))
 
+# collocation（模块 4 精听提炼产出）的常规配比保底——默认 0（不像 INDUCTION_MIN_PHRASES
+# 默认 1），因为 INDUCTION_MAX_TARGETS 默认只有 2，两个保底加起来会直接吃满预算、
+# 挤掉生词/病句的常规诱导。默认让 collocation 走跟生词/病句一样的混合池排序竞争；
+# 真攒了数据觉得被淹没了，在 .env 里调高——这跟其它诱导配额一致的"先跑通、按真实数据调"
+# 惯例。注意：当天新学的 collocation 走「今日通道」（见 retrieve_today_collocations），
+# 不占这个配额，这里只影响往期 collocation 的常规采样。
+INDUCTION_MIN_COLLOCATIONS = int(os.getenv("INDUCTION_MIN_COLLOCATIONS", "0"))
+
 # voice_bot.py（Pipecat 语音 pipeline）必需，没配就连不上。
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "").strip() or None
 GROQ_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")

@@ -146,6 +146,16 @@
     <h2>专业应对话术</h2>
     <div id="pro-phrases-list"></div>
   </div>
+
+  <div class="panel">
+    <h2>精听语块（collocation）</h2>
+    <div id="collocations-list"></div>
+  </div>
+
+  <div class="panel">
+    <h2>精听听力笔记（只留痕，不刷不诱导）</h2>
+    <div id="phonetic-notes-list"></div>
+  </div>
 </div>
 
 <script>
@@ -160,6 +170,8 @@ const el = {
   expressionsList: document.getElementById('expressions-list'),
   wordsList: document.getElementById('words-list'),
   proPhrasesList: document.getElementById('pro-phrases-list'),
+  collocationsList: document.getElementById('collocations-list'),
+  phoneticNotesList: document.getElementById('phonetic-notes-list'),
 };
 
 function showError(msg) {
@@ -176,6 +188,7 @@ function setStatus(msg) {
 }
 
 function formatTime(iso) {
+  if (!iso) return '从未';  // 精听提炼产出的词/语块尚未被口语诱导过，last_practiced 是空字符串
   try {
     return new Date(iso).toLocaleString();
   } catch (e) {
@@ -284,6 +297,62 @@ function renderProPhrases(phrases) {
   }
 }
 
+function renderCollocations(collocations) {
+  el.collocationsList.innerHTML = '';
+  if (collocations.length === 0) {
+    el.collocationsList.innerHTML = '<div class="empty">这门语言目前没有存库的精听语块。</div>';
+    return;
+  }
+  for (const c of collocations) {
+    const card = document.createElement('div');
+    card.className = 'record';
+    card.innerHTML = `
+      <div class="zh">${c.phrase}</div>
+      <div class="note">${c.meaning}</div>
+      ${c.note ? `<div class="note">${c.note}</div>` : ''}
+      <div class="meta">
+        <span class="mastery-badge">掌握度 ${c.mastery}</span>
+        <span>最后练习：${formatTime(c.last_practiced)}</span>
+      </div>
+    `;
+    const deleteBtn = document.createElement('button');
+    deleteBtn.type = 'button';
+    deleteBtn.className = 'record-delete-btn';
+    deleteBtn.title = '删除这条记录';
+    deleteBtn.textContent = '✕';
+    deleteBtn.addEventListener('click', () => deleteRecord('collocations', c.id, card));
+    card.appendChild(deleteBtn);
+    el.collocationsList.appendChild(card);
+  }
+}
+
+function renderPhoneticNotes(notes) {
+  el.phoneticNotesList.innerHTML = '';
+  if (notes.length === 0) {
+    el.phoneticNotesList.innerHTML = '<div class="empty">这门语言目前没有存库的听力笔记。</div>';
+    return;
+  }
+  for (const n of notes) {
+    const card = document.createElement('div');
+    card.className = 'record';
+    card.innerHTML = `
+      <div class="zh">${n.sentence}</div>
+      <div class="note">没听清：${n.word_or_span}</div>
+      <div class="meta">
+        <span>${formatTime(n.date)}</span>
+      </div>
+    `;
+    const deleteBtn = document.createElement('button');
+    deleteBtn.type = 'button';
+    deleteBtn.className = 'record-delete-btn';
+    deleteBtn.title = '删除这条记录';
+    deleteBtn.textContent = '✕';
+    deleteBtn.addEventListener('click', () => deleteRecord('phonetic_notes', n.id, card));
+    card.appendChild(deleteBtn);
+    el.phoneticNotesList.appendChild(card);
+  }
+}
+
 async function loadRecords() {
   clearError();
   setStatus('加载中…');
@@ -294,7 +363,9 @@ async function loadRecords() {
     renderExpressions(data.expressions);
     renderWords(data.words);
     renderProPhrases(data.pro_phrases);
-    setStatus(`共 ${data.expressions.length} 条病句、${data.words.length} 条生词、${data.pro_phrases.length} 条专业话术。`);
+    renderCollocations(data.collocations);
+    renderPhoneticNotes(data.phonetic_notes);
+    setStatus(`共 ${data.expressions.length} 条病句、${data.words.length} 条生词、${data.pro_phrases.length} 条专业话术、${data.collocations.length} 条精听语块、${data.phonetic_notes.length} 条听力笔记。`);
   } catch (e) {
     showError('加载失败：' + e.message);
     setStatus('');

@@ -1,7 +1,15 @@
 import sqlite3
 
 from langpractice import db
-from langpractice.models import Expression, PersonaCard, ProPhrase, Word
+from langpractice.models import (
+    Collocation,
+    Expression,
+    MiningSentence,
+    PersonaCard,
+    PhoneticNote,
+    ProPhrase,
+    Word,
+)
 
 
 def test_insert_and_fetch_expressions_roundtrip():
@@ -36,6 +44,25 @@ def test_insert_and_fetch_words_roundtrip():
     assert len(fetched) == 1
     assert fetched[0].word == "exhausted"
     assert fetched[0].meaning == "筋疲力尽的"
+
+
+def test_insert_and_fetch_word_phonetic_roundtrip():
+    conn = db.connect(":memory:")
+    word = Word(word="solitude", meaning="独处 独居", language="en",
+                phonetic="/ˈsɑːlətuːd/", last_practiced="")
+    db.insert_words(conn, [word])
+
+    fetched = db.fetch_words(conn, "en")
+    assert fetched[0].phonetic == "/ˈsɑːlətuːd/"
+
+
+def test_fetch_word_phonetic_defaults_to_empty_string():
+    conn = db.connect(":memory:")
+    word = Word(word="exhausted", meaning="筋疲力尽的", language="en", last_practiced="")
+    db.insert_words(conn, [word])
+
+    fetched = db.fetch_words(conn, "en")
+    assert fetched[0].phonetic == ""
 
 
 def test_fetch_filters_by_language():
@@ -259,6 +286,156 @@ def test_seeded_scenarios_are_ordinary_rows_deletable_like_any_other():
     conn = db.connect(":memory:")
     assert db.delete_scenario(conn, "clinic_fr") is True
     assert db.fetch_scenario(conn, "clinic_fr") is None
+
+
+def test_insert_and_fetch_collocations_roundtrip():
+    conn = db.connect(":memory:")
+    c = Collocation(phrase="curl up", meaning="蜷缩", note="睡前动作", language="en")
+    db.insert_collocations(conn, [c])
+
+    fetched = db.fetch_collocations(conn, "en")
+    assert len(fetched) == 1
+    assert fetched[0].phrase == "curl up"
+    assert fetched[0].source == "mining"
+    assert fetched[0].id is not None
+
+    assert db.fetch_collocations(conn, "fr") == []
+
+
+def test_insert_collocations_sets_id_on_each_object():
+    conn = db.connect(":memory:")
+    c1 = Collocation(phrase="a", meaning="a", note="", language="en")
+    c2 = Collocation(phrase="b", meaning="b", note="", language="en")
+    db.insert_collocations(conn, [c1, c2])
+    assert c1.id is not None
+    assert c2.id is not None
+    assert c1.id != c2.id
+
+
+def test_delete_collocation_removes_row_and_reports_success():
+    conn = db.connect(":memory:")
+    c = Collocation(phrase="a", meaning="a", note="", language="en")
+    db.insert_collocations(conn, [c])
+
+    assert db.delete_collocation(conn, c.id) is True
+    assert db.fetch_collocations(conn, "en") == []
+
+
+def test_delete_collocation_missing_id_returns_false():
+    conn = db.connect(":memory:")
+    assert db.delete_collocation(conn, 9999) is False
+
+
+def test_adjust_collocation_mastery_increments_and_floors_at_zero():
+    conn = db.connect(":memory:")
+    c = Collocation(phrase="a", meaning="a", note="", language="en")
+    db.insert_collocations(conn, [c])
+
+    db.adjust_collocation_mastery(conn, c.id, 1, "2026-09-04T00:00:00+00:00")
+    fetched = db.fetch_collocations(conn, "en")[0]
+    assert fetched.mastery == 1
+    assert fetched.last_practiced == "2026-09-04T00:00:00+00:00"
+
+    db.adjust_collocation_mastery(conn, c.id, -5, "2026-09-05T00:00:00+00:00")
+    assert db.fetch_collocations(conn, "en")[0].mastery == 0
+
+
+def test_insert_and_fetch_phonetic_notes_roundtrip():
+    conn = db.connect(":memory:")
+    n = PhoneticNote(
+        sentence="get into your pajamas and go to bed",
+        word_or_span="get into",
+        source="https://example.com/v",
+        date="2026-09-01",
+        language="en",
+    )
+    db.insert_phonetic_notes(conn, [n])
+
+    fetched = db.fetch_phonetic_notes(conn, "en")
+    assert len(fetched) == 1
+    assert fetched[0].word_or_span == "get into"
+    assert fetched[0].id is not None
+
+    assert db.fetch_phonetic_notes(conn, "fr") == []
+
+
+def test_delete_phonetic_note_removes_row_and_reports_success():
+    conn = db.connect(":memory:")
+    n = PhoneticNote(sentence="a", word_or_span="a", source="", date="", language="en")
+    db.insert_phonetic_notes(conn, [n])
+
+    assert db.delete_phonetic_note(conn, n.id) is True
+    assert db.fetch_phonetic_notes(conn, "en") == []
+
+
+def test_delete_phonetic_note_missing_id_returns_false():
+    conn = db.connect(":memory:")
+    assert db.delete_phonetic_note(conn, 9999) is False
+
+
+def test_insert_and_fetch_mining_sentences_roundtrip():
+    conn = db.connect(":memory:")
+    s = MiningSentence(
+        sentence="a sentence", translation="一句话", url="https://example.com", csv_date="--",
+        language="en",
+    )
+    db.insert_mining_sentences(conn, [s])
+
+    fetched = db.fetch_mining_sentences(conn, "en")
+    assert len(fetched) == 1
+    assert fetched[0].status == "pending"
+    assert fetched[0].id is not None
+
+
+def test_fetch_mining_sentences_filters_by_status():
+    conn = db.connect(":memory:")
+    s1 = MiningSentence(sentence="a", translation="", url="", csv_date="", language="en")
+    s2 = MiningSentence(sentence="b", translation="", url="", csv_date="", language="en")
+    db.insert_mining_sentences(conn, [s1, s2])
+    db.update_mining_sentence_status(conn, s1.id, "queued")
+
+    assert [r.id for r in db.fetch_mining_sentences(conn, "en", "queued")] == [s1.id]
+    assert len(db.fetch_mining_sentences(conn, "en", "pending")) == 1
+    assert len(db.fetch_mining_sentences(conn, "en")) == 2
+
+
+def test_mining_sentence_exists_dedups_by_literal_sentence():
+    conn = db.connect(":memory:")
+    db.insert_mining_sentences(
+        conn, [MiningSentence(sentence="hello world", translation="", url="", csv_date="", language="en")]
+    )
+    assert db.mining_sentence_exists(conn, "en", "hello world") is True
+    assert db.mining_sentence_exists(conn, "en", "goodbye world") is False
+    assert db.mining_sentence_exists(conn, "fr", "hello world") is False
+
+
+def test_update_mining_sentence_status_missing_id_returns_false():
+    conn = db.connect(":memory:")
+    assert db.update_mining_sentence_status(conn, 9999, "done") is False
+
+
+def test_delete_mining_sentence_removes_row_and_reports_success():
+    conn = db.connect(":memory:")
+    s = MiningSentence(sentence="a", translation="", url="", csv_date="", language="en")
+    db.insert_mining_sentences(conn, [s])
+
+    assert db.delete_mining_sentence(conn, s.id) is True
+    assert db.fetch_mining_sentences(conn, "en") == []
+
+
+def test_fetch_mining_sentence_by_id_returns_none_when_missing():
+    conn = db.connect(":memory:")
+    assert db.fetch_mining_sentence_by_id(conn, 9999) is None
+
+
+def test_fetch_mining_sentence_by_id_returns_row():
+    conn = db.connect(":memory:")
+    s = MiningSentence(sentence="a", translation="t", url="u", csv_date="d", language="en")
+    db.insert_mining_sentences(conn, [s])
+
+    fetched = db.fetch_mining_sentence_by_id(conn, s.id)
+    assert fetched is not None
+    assert fetched.sentence == "a"
 
 
 def test_connect_does_not_reseed_once_scenarios_table_is_non_empty():

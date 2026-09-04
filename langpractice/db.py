@@ -2,7 +2,7 @@ import sqlite3
 from pathlib import Path
 
 from .config import DB_PATH, DEFAULT_HOSTILITY_LEVEL
-from .models import Expression, PersonaCard, ProPhrase, Word
+from .models import Collocation, Expression, MiningSentence, PersonaCard, PhoneticNote, ProPhrase, Word
 from .seed_scenarios import SEED_SCENARIOS
 
 SCHEMA = """
@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS words (
     language       TEXT NOT NULL CHECK(language IN ('en','fr')),
     word           TEXT NOT NULL,
     meaning        TEXT,
+    phonetic       TEXT,
     mastery        INTEGER NOT NULL DEFAULT 0,
     last_practiced TEXT NOT NULL,
     created_at     TEXT NOT NULL DEFAULT (datetime('now'))
@@ -40,6 +41,40 @@ CREATE TABLE IF NOT EXISTS pro_phrases (
     mastery        INTEGER NOT NULL DEFAULT 0,
     last_practiced TEXT NOT NULL,
     created_at     TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS collocations (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    language       TEXT NOT NULL CHECK(language IN ('en','fr')),
+    phrase         TEXT NOT NULL,
+    meaning        TEXT,
+    note           TEXT,
+    source         TEXT NOT NULL DEFAULT 'mining',
+    mastery        INTEGER NOT NULL DEFAULT 0,
+    last_practiced TEXT NOT NULL DEFAULT '',
+    created_at     TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS phonetic_notes (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    language     TEXT NOT NULL CHECK(language IN ('en','fr')),
+    sentence     TEXT NOT NULL,
+    word_or_span TEXT NOT NULL,
+    source       TEXT,
+    date         TEXT,
+    created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS mining_sentences (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    language    TEXT NOT NULL CHECK(language IN ('en','fr')),
+    sentence    TEXT NOT NULL,
+    translation TEXT,
+    url         TEXT,
+    csv_date    TEXT,
+    status      TEXT NOT NULL DEFAULT 'pending'
+                CHECK(status IN ('pending','queued','skipped','done')),
+    created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS scenarios (
@@ -63,6 +98,7 @@ def connect(db_path: Path = DB_PATH) -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     conn.executescript(SCHEMA)
     _migrate_scenarios_add_hostility_level(conn)
+    _migrate_words_add_phonetic(conn)
     _seed_scenarios_if_empty(conn)
     return conn
 
@@ -76,6 +112,15 @@ def _migrate_scenarios_add_hostility_level(conn: sqlite3.Connection) -> None:
         conn.execute(
             f"ALTER TABLE scenarios ADD COLUMN hostility_level TEXT NOT NULL DEFAULT '{DEFAULT_HOSTILITY_LEVEL}'"
         )
+        conn.commit()
+
+
+def _migrate_words_add_phonetic(conn: sqlite3.Connection) -> None:
+    """老数据库的 words 表没有 phonetic 列（模块 4 精听提炼新增，Trancy 词表 CSV 带音标）。
+    同 _migrate_scenarios_add_hostility_level：新库走 SCHEMA，这里对新库是 no-op。"""
+    columns = {row["name"] for row in conn.execute("PRAGMA table_info(words)")}
+    if "phonetic" not in columns:
+        conn.execute("ALTER TABLE words ADD COLUMN phonetic TEXT")
         conn.commit()
 
 
@@ -119,13 +164,14 @@ def insert_words(conn: sqlite3.Connection, words: list[Word]) -> None:
     for w in words:
         cursor = conn.execute(
             """
-            INSERT INTO words (language, word, meaning, mastery, last_practiced)
-            VALUES (:language, :word, :meaning, :mastery, :last_practiced)
+            INSERT INTO words (language, word, meaning, phonetic, mastery, last_practiced)
+            VALUES (:language, :word, :meaning, :phonetic, :mastery, :last_practiced)
             """,
             {
                 "language": w.language,
                 "word": w.word,
                 "meaning": w.meaning,
+                "phonetic": w.phonetic,
                 "mastery": w.mastery,
                 "last_practiced": w.last_practiced,
             },
@@ -259,11 +305,201 @@ def fetch_words(conn: sqlite3.Connection, language: str) -> list[Word]:
             language=r["language"],
             word=r["word"],
             meaning=r["meaning"] or "",
+            phonetic=r["phonetic"] or "",
             mastery=r["mastery"],
             last_practiced=r["last_practiced"],
         )
         for r in rows
     ]
+
+
+def insert_collocations(conn: sqlite3.Connection, collocations: list[Collocation]) -> None:
+    """同 insert_pro_phrases：逐条插入把 id 写回对象，供前端删除用。"""
+    for c in collocations:
+        cursor = conn.execute(
+            """
+            INSERT INTO collocations (language, phrase, meaning, note, source, mastery, last_practiced)
+            VALUES (:language, :phrase, :meaning, :note, :source, :mastery, :last_practiced)
+            """,
+            {
+                "language": c.language,
+                "phrase": c.phrase,
+                "meaning": c.meaning,
+                "note": c.note,
+                "source": c.source,
+                "mastery": c.mastery,
+                "last_practiced": c.last_practiced,
+            },
+        )
+        c.id = cursor.lastrowid
+    conn.commit()
+
+
+def fetch_collocations(conn: sqlite3.Connection, language: str) -> list[Collocation]:
+    rows = conn.execute(
+        "SELECT * FROM collocations WHERE language = ? ORDER BY id", (language,)
+    ).fetchall()
+    return [
+        Collocation(
+            id=r["id"],
+            language=r["language"],
+            phrase=r["phrase"],
+            meaning=r["meaning"] or "",
+            note=r["note"] or "",
+            source=r["source"],
+            mastery=r["mastery"],
+            last_practiced=r["last_practiced"],
+        )
+        for r in rows
+    ]
+
+
+def delete_collocation(conn: sqlite3.Connection, collocation_id: int) -> bool:
+    cursor = conn.execute("DELETE FROM collocations WHERE id = ?", (collocation_id,))
+    conn.commit()
+    return cursor.rowcount > 0
+
+
+def adjust_collocation_mastery(
+    conn: sqlite3.Connection, collocation_id: int, delta: int, now_iso: str
+) -> None:
+    """同 adjust_pro_phrase_mastery：口语侧诱导复盘用（下限 0，同时刷新 last_practiced）。"""
+    conn.execute(
+        "UPDATE collocations SET mastery = MAX(0, mastery + ?), last_practiced = ? WHERE id = ?",
+        (delta, now_iso, collocation_id),
+    )
+    conn.commit()
+
+
+def insert_phonetic_notes(conn: sqlite3.Connection, notes: list[PhoneticNote]) -> None:
+    """同 insert_words：逐条插入把 id 写回对象。phonetic_notes 只存不导、不进诱导，
+    没有 mastery，但删除功能（history 页）仍需要 id。"""
+    for n in notes:
+        cursor = conn.execute(
+            """
+            INSERT INTO phonetic_notes (language, sentence, word_or_span, source, date)
+            VALUES (:language, :sentence, :word_or_span, :source, :date)
+            """,
+            {
+                "language": n.language,
+                "sentence": n.sentence,
+                "word_or_span": n.word_or_span,
+                "source": n.source,
+                "date": n.date,
+            },
+        )
+        n.id = cursor.lastrowid
+    conn.commit()
+
+
+def fetch_phonetic_notes(conn: sqlite3.Connection, language: str) -> list[PhoneticNote]:
+    rows = conn.execute(
+        "SELECT * FROM phonetic_notes WHERE language = ? ORDER BY id", (language,)
+    ).fetchall()
+    return [
+        PhoneticNote(
+            id=r["id"],
+            language=r["language"],
+            sentence=r["sentence"],
+            word_or_span=r["word_or_span"],
+            source=r["source"] or "",
+            date=r["date"] or "",
+        )
+        for r in rows
+    ]
+
+
+def delete_phonetic_note(conn: sqlite3.Connection, note_id: int) -> bool:
+    cursor = conn.execute("DELETE FROM phonetic_notes WHERE id = ?", (note_id,))
+    conn.commit()
+    return cursor.rowcount > 0
+
+
+def insert_mining_sentences(conn: sqlite3.Connection, sentences: list[MiningSentence]) -> None:
+    """同 insert_words：逐条插入把 id 写回对象，供 triage 接口按 id 更新 status。"""
+    for s in sentences:
+        cursor = conn.execute(
+            """
+            INSERT INTO mining_sentences (language, sentence, translation, url, csv_date, status)
+            VALUES (:language, :sentence, :translation, :url, :csv_date, :status)
+            """,
+            {
+                "language": s.language,
+                "sentence": s.sentence,
+                "translation": s.translation,
+                "url": s.url,
+                "csv_date": s.csv_date,
+                "status": s.status,
+            },
+        )
+        s.id = cursor.lastrowid
+    conn.commit()
+
+
+def fetch_mining_sentences(
+    conn: sqlite3.Connection, language: str, status: str | None = None
+) -> list[MiningSentence]:
+    if status is None:
+        rows = conn.execute(
+            "SELECT * FROM mining_sentences WHERE language = ? ORDER BY id", (language,)
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT * FROM mining_sentences WHERE language = ? AND status = ? ORDER BY id",
+            (language, status),
+        ).fetchall()
+    return [
+        MiningSentence(
+            id=r["id"],
+            language=r["language"],
+            sentence=r["sentence"],
+            translation=r["translation"] or "",
+            url=r["url"] or "",
+            csv_date=r["csv_date"] or "",
+            status=r["status"],
+        )
+        for r in rows
+    ]
+
+
+def fetch_mining_sentence_by_id(conn: sqlite3.Connection, sentence_id: int) -> MiningSentence | None:
+    row = conn.execute(
+        "SELECT * FROM mining_sentences WHERE id = ?", (sentence_id,)
+    ).fetchone()
+    if row is None:
+        return None
+    return MiningSentence(
+        id=row["id"],
+        language=row["language"],
+        sentence=row["sentence"],
+        translation=row["translation"] or "",
+        url=row["url"] or "",
+        csv_date=row["csv_date"] or "",
+        status=row["status"],
+    )
+
+
+def mining_sentence_exists(conn: sqlite3.Connection, language: str, sentence: str) -> bool:
+    """句表导入去重用——按 Sentence 字面比对，同语言下不分 status 都算已导入过。"""
+    row = conn.execute(
+        "SELECT 1 FROM mining_sentences WHERE language = ? AND sentence = ? LIMIT 1",
+        (language, sentence),
+    ).fetchone()
+    return row is not None
+
+
+def update_mining_sentence_status(conn: sqlite3.Connection, sentence_id: int, status: str) -> bool:
+    cursor = conn.execute(
+        "UPDATE mining_sentences SET status = ? WHERE id = ?", (status, sentence_id)
+    )
+    conn.commit()
+    return cursor.rowcount > 0
+
+
+def delete_mining_sentence(conn: sqlite3.Connection, sentence_id: int) -> bool:
+    cursor = conn.execute("DELETE FROM mining_sentences WHERE id = ?", (sentence_id,))
+    conn.commit()
+    return cursor.rowcount > 0
 
 
 def _row_to_persona_card(row: sqlite3.Row) -> PersonaCard:

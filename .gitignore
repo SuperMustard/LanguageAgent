@@ -1,5 +1,6 @@
 # practice data — private learning records, never in version control
 data/
+scratchpad/
 *.db
 *.db-journal
 *.db-wal

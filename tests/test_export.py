@@ -1,7 +1,13 @@
 import json
 
-from langpractice.export import expressions_to_json, pro_phrases_to_json, words_to_txt
-from langpractice.models import Expression, ProPhrase, Word
+from langpractice.export import (
+    collocations_to_json,
+    expressions_to_json,
+    merge_phrase_cards,
+    pro_phrases_to_json,
+    words_to_txt,
+)
+from langpractice.models import Collocation, Expression, ProPhrase, Word
 
 
 def _expr(**overrides) -> Expression:
@@ -133,3 +139,70 @@ def test_pro_phrases_to_json_dedup_case_insensitive():
 
 def test_pro_phrases_to_json_empty_list():
     assert json.loads(pro_phrases_to_json([])) == []
+
+
+def _collocation(**overrides) -> Collocation:
+    base = dict(
+        phrase="curl up",
+        meaning="蜷缩",
+        note="睡前动作，常搭配 in bed",
+        language="en",
+        source="mining",
+        mastery=1,
+        last_practiced="2026-08-20T10:00:00+00:00",
+    )
+    base.update(overrides)
+    return Collocation(**base)
+
+
+def test_collocations_to_json_has_exactly_three_fields():
+    data = json.loads(collocations_to_json([_collocation()]))
+    assert len(data) == 1
+    assert set(data[0].keys()) == {"phrase", "meaning", "note"}
+
+
+def test_collocations_to_json_strips_internal_fields():
+    data = json.loads(collocations_to_json([_collocation()]))
+    record = data[0]
+    assert record["phrase"] == "curl up"
+    assert record["meaning"] == "蜷缩"
+    assert record["note"] == "睡前动作，常搭配 in bed"
+    assert "source" not in record
+    assert "language" not in record
+    assert "mastery" not in record
+    assert "last_practiced" not in record
+
+
+def test_collocations_to_json_dedup_case_insensitive():
+    collocations = [
+        _collocation(phrase="Curl Up"),
+        _collocation(phrase="curl up"),
+    ]
+    data = json.loads(collocations_to_json(collocations))
+    assert len(data) == 1
+    assert data[0]["phrase"] == "Curl Up"
+
+
+def test_collocations_to_json_empty_list():
+    assert json.loads(collocations_to_json([])) == []
+
+
+def test_merge_phrase_cards_combines_both_sources():
+    data = json.loads(merge_phrase_cards([_phrase()], [_collocation()]))
+    phrases = {d["phrase"] for d in data}
+    assert phrases == {_phrase().phrase, "curl up"}
+
+
+def test_merge_phrase_cards_dedups_across_sources_pro_phrase_wins():
+    # 话术和 collocation 产出同一个 phrase（字面大小写不敏感）——只留一条，且是 pro_phrase
+    # 那条的 note（usage_note），因为 pro_phrases 排在前面、专业话术是使用者最想练的能力。
+    phrase = _phrase(phrase="Come clean", usage_note="话术的用法说明")
+    collocation = _collocation(phrase="come clean", note="collocation 的语境说明")
+    data = json.loads(merge_phrase_cards([phrase], [collocation]))
+    assert len(data) == 1
+    assert data[0]["phrase"] == "Come clean"
+    assert data[0]["note"] == "话术的用法说明"
+
+
+def test_merge_phrase_cards_empty_inputs():
+    assert json.loads(merge_phrase_cards([], [])) == []

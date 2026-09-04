@@ -109,6 +109,55 @@ import`personas.py` 成环）。
     （对应约束 5，已更新）。
   - history 页 + `/records/{language}` 把 `pro_phrases` 纳入查看/删除。
   - 单元测试：`tests/test_export.py` 覆盖 `pro_phrases_to_json` 的字段裁剪/去重/空输入。
+- **精听提炼（模块 4）已全部实现**：`langpractice/mining.py` + 新页面 `web/mining.html`
+  （`GET /mining`，主页头部加了"精听待处理 →"链接）。垂直切片交付，三片依次完成：
+  - **切片 A（词表极简入口）**：Trancy 词表 CSV（`Word/Phonetic/Translation/Date`）网页
+    上传 → `mining.clean_meaning()` 清洗 `Translation` 脏字段（SPEC 参考实现原样搬）→
+    跟已有 `words.word`（同语言）大小写不敏感去重 → 直接插入 `words` 表。`words` 表新增
+    `phonetic` 列（`db._migrate_words_add_phonetic` 老库迁移守卫，同 hostility_level 那套
+    模式）。`POST /mining/words/import`（`UploadFile` + `language` form 字段，这是全项目
+    第一个文件上传接口，`python-multipart` 早已在 requirements.txt 里）。
+  - **切片 B（句表完整流水线）**：新增 `mining_sentences`（导入去重暂存池，status:
+    pending→queued/skipped/done）、`collocations`、`phonetic_notes` 三张表（db.py 同构于
+    `pro_phrases`/`words` 那套 insert/fetch/delete，`collocations` 还有
+    `adjust_collocation_mastery`）。句表 CSV（`Sentence/Translation/URL/Date`）导入按
+    `Sentence` 字面去重进暂存池 → 网页"逐句三选一"（语音/语言/跳过）→"语音"直接写
+    `phonetic_notes`（要求同时填 `word_or_span`，即"哪里没听清"）不进 Groq；"语言"进
+    `queued` 排队；"跳过"标记 `skipped`，都不再处理。`POST /mining/process` 批量把所有
+    `queued` 句子一次性调 Groq 分诊+提炼（`mining.run_mining_triage`，prompt 挪进
+    `prompts/mining_triage_prompt.md`，是 SPEC 里已验证 prompt 的原样落地，只把硬编码的
+    "英语"泛化成按 `language` 参数替换的语言名，因为项目要支持 en/fr 两种目标语言）——
+    产出的生词/语块分别去重后插入 `words`/`collocations`，成功的行置 `done`；单句解析
+    失败/index 缺失不拖累整批，那一行留在 `queued` 可以下次重新提交重试。全程用真实
+    Trancy 导出文件 + 真实 Groq API 验证过（真人测试用户提供的词表/句表 CSV，见
+    scratchpad/，不进 git）：词表清洗结果跟 SPEC 举例完全一致，句表分诊产出的语块是
+    词典原形（`get into`/`snuggle up`/`turn off`/`come clean`），跟"语音"分支各自正确
+    落库；claude-in-chrome 走了一遍完整点击流程（上传→三选一→批量提交→history 页确认）。
+    history 页新增"精听语块"/"精听听力笔记"两个区块（`GET /records/{language}` 一并
+    返回），`DELETE /collocations/{id}`、`DELETE /phonetic_notes/{id}`——都验证过真删。
+  - **切片 C（接入诱导今日通道 + 导出合并）**：`induction.py` 把 collocation 加成第四个
+    诱导来源——`retrieve_induction_targets` 新增 `min_collocations` 保底配额（复用
+    `pro_phrases` 那套"保底+混合池"逻辑，pro_phrases 保底优先于 collocation），新函数
+    `retrieve_today_collocations()` 实现"今日通道"（当天新入库、mastery=0、从没被诱导过
+    的 collocation，高优先级额外注入当天那场对话，不占常规配额，`voice_bot.py` 第 116 行
+    直接拼接在 `retrieve_induction_targets()` 结果后面）；`_collocation_candidates()`
+    的常规配比池会排除今日通道会覆盖的那批，避免同一条被两条通道重复抽中。
+    `INDUCTION_MIN_COLLOCATIONS` 默认 **0**（不像 `INDUCTION_MIN_PHRASES` 默认 1）——因为
+    `INDUCTION_MAX_TARGETS` 默认只有 2，两个保底加起来会直接吃满预算、常年挤掉生词/病句
+    的常规诱导，默认 0 先让 collocation 走混合池排序竞争，真观察到被淹没了再在 `.env`
+    里调高，跟其它诱导配额一致的"先跑通、按真实数据调"惯例。`export.py` 新增
+    `merge_phrase_cards(pro_phrases, collocations)`：两个来源共用「表达块卡」但产出
+    合并进同一个 `{lang}_phrases.json`、按 `phrase` 大小写去重（同名时 pro_phrases 那条
+    赢），不是分别导出互不知道对方——避免同一表达出两张卡（对应 SPEC 导出契约里的
+    "两者若产出同一 phrase，字面去重即可"）。用真实数据验证过：`/export/en` 产出的
+    `phrases_json` 正确含 collocation；直接连 verify.db 跑
+    `retrieve_induction_targets`/`retrieve_today_collocations`，确认当天新入库的
+    collocation 只走今日通道、不在常规配比池里重复出现。
+  - 单元测试全覆盖：`tests/test_mining.py`（CSV 解析、清洗、prompt 渲染、Groq 分诊结果
+    解析含单条畸形不拖累整批）、`tests/test_db.py`/`test_export.py`/`test_induction.py`
+    的对应新增测试，跑到 149 个全绿。
+  - `.gitignore` 加了 `scratchpad/`——用户提供的真实 Trancy CSV 是私人学习数据，
+    跟 `data/`（数据库文件）一样绝不进版本控制。
 - 改动历史看 `git log`，这里不重复维护——已知的非显而易见的坑记在下面「实现踩坑记录」。
 
 ## 技术栈

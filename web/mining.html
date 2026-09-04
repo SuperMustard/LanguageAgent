@@ -1,0 +1,366 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>精听待处理</title>
+<style>
+  :root {
+    --bg: #f6f5f2;
+    --panel: #ffffff;
+    --border: #e2ded6;
+    --text: #2a2723;
+    --muted: #86807a;
+    --accent: #b5553a;
+    --accent-dark: #8f4230;
+    --ai-bubble: #f1e8dd;
+    --error: #b3392c;
+    --error-bg: #fbe9e6;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    overflow-x: hidden;
+  }
+  .wrap {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 24px 16px 80px;
+  }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  h2 { font-size: 15px; margin: 0 0 10px; }
+  .sub { color: var(--muted); font-size: 13px; margin-bottom: 20px; }
+  .back-link {
+    display: inline-block;
+    font-size: 13px;
+    color: var(--accent);
+    text-decoration: none;
+    margin-bottom: 12px;
+  }
+  .back-link:hover { text-decoration: underline; }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  select, input[type="file"] {
+    font-size: 14px;
+    padding: 7px 10px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: #fff;
+    color: var(--text);
+  }
+  button {
+    font-size: 14px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: #fff;
+    color: var(--text);
+    cursor: pointer;
+  }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button:disabled { opacity: 0.45; cursor: not-allowed; }
+  #word-status { font-size: 13px; color: var(--muted); min-height: 18px; margin-top: 8px; }
+  #error {
+    display: none;
+    background: var(--error-bg);
+    color: var(--error);
+    border: 1px solid var(--error);
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-size: 13px;
+    margin-bottom: 16px;
+  }
+  .empty { color: var(--muted); font-size: 13px; }
+  .sentence-card {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+    margin-bottom: 10px;
+    font-size: 13px;
+  }
+  .sentence-card .original { margin-bottom: 4px; }
+  .sentence-card .translation { color: var(--muted); margin-bottom: 6px; }
+  .sentence-card .source-link { font-size: 12px; color: var(--accent); }
+  .sentence-card .choice-row { margin-top: 8px; }
+  .sentence-card .phonetic-input-row {
+    display: none;
+    margin-top: 8px;
+    gap: 8px;
+  }
+  .sentence-card.phonetic-mode .phonetic-input-row { display: flex; }
+  input[type="text"] {
+    flex: 1;
+    font-size: 13px;
+    padding: 7px 10px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+  }
+  .sentence-card.done { opacity: 0.4; }
+  #process-status { font-size: 13px; color: var(--muted); min-height: 18px; margin-top: 8px; }
+  #process-results { font-size: 13px; margin-top: 10px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="back-link" href="/">← 返回演练</a>
+  <h1>精听待处理</h1>
+  <div class="sub">导入 Trancy 精听收藏（词表 / 句表 CSV），提炼成生词、语块和听力笔记。</div>
+
+  <div id="error"></div>
+
+  <div class="panel">
+    <h2>词表导入（点词收藏 = 生词，直接入库）</h2>
+    <form id="word-import-form">
+      <div class="row">
+        <select id="word-language">
+          <option value="fr">法语 (fr)</option>
+          <option value="en" selected>英语 (en)</option>
+        </select>
+        <input type="file" id="word-file" accept=".csv" required>
+        <button type="submit" class="primary">上传词表 CSV</button>
+      </div>
+    </form>
+    <div id="word-status"></div>
+  </div>
+
+  <div class="panel">
+    <h2>句表导入（整句收藏 = 有没跟上的东西，需要分诊）</h2>
+    <div class="row">
+      <select id="sentence-language">
+        <option value="fr">法语 (fr)</option>
+        <option value="en" selected>英语 (en)</option>
+      </select>
+    </div>
+    <form id="sentence-import-form">
+      <div class="row" style="margin-top:8px">
+        <input type="file" id="sentence-file" accept=".csv" required>
+        <button type="submit" class="primary">上传句表 CSV</button>
+        <button type="button" id="refresh-sentences-btn">刷新待处理列表</button>
+      </div>
+    </form>
+    <div id="sentence-import-status"></div>
+  </div>
+
+  <div class="panel">
+    <h2>逐句三选一</h2>
+    <div class="sub" style="margin-bottom:12px">
+      语音 = 认识但没听出来（不进 Groq，直接留痕）；语言 = 有不熟的词或搭配（排队等 Groq 分诊）；
+      跳过 = 误收藏/已掌握。
+    </div>
+    <div id="pending-sentences-list"></div>
+  </div>
+
+  <div class="panel">
+    <h2>批量提交给 Groq 分诊</h2>
+    <div class="row">
+      <button id="process-btn" class="primary">处理所有已标记「语言」的句子</button>
+    </div>
+    <div id="process-status"></div>
+    <div id="process-results"></div>
+  </div>
+</div>
+
+<script>
+const el = {
+  error: document.getElementById('error'),
+  wordForm: document.getElementById('word-import-form'),
+  wordLanguage: document.getElementById('word-language'),
+  wordFile: document.getElementById('word-file'),
+  wordStatus: document.getElementById('word-status'),
+  sentenceLanguage: document.getElementById('sentence-language'),
+  sentenceForm: document.getElementById('sentence-import-form'),
+  sentenceFile: document.getElementById('sentence-file'),
+  sentenceImportStatus: document.getElementById('sentence-import-status'),
+  refreshSentencesBtn: document.getElementById('refresh-sentences-btn'),
+  pendingSentencesList: document.getElementById('pending-sentences-list'),
+  processBtn: document.getElementById('process-btn'),
+  processStatus: document.getElementById('process-status'),
+  processResults: document.getElementById('process-results'),
+};
+
+function showError(msg) {
+  el.error.textContent = msg;
+  el.error.style.display = 'block';
+}
+
+function clearError() {
+  el.error.style.display = 'none';
+}
+
+el.wordForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  clearError();
+  const file = el.wordFile.files[0];
+  if (!file) return;
+
+  const submitBtn = el.wordForm.querySelector('button[type="submit"]');
+  submitBtn.disabled = true;
+  el.wordStatus.textContent = '上传中…';
+
+  try {
+    const formData = new FormData();
+    formData.append('language', el.wordLanguage.value);
+    formData.append('file', file);
+
+    const res = await fetch('/mining/words/import', { method: 'POST', body: formData });
+    if (!res.ok) throw new Error((await res.json()).detail || res.statusText);
+    const data = await res.json();
+    el.wordStatus.textContent =
+      `共 ${data.total_rows} 行，新增 ${data.imported} 条生词，跳过 ${data.skipped_duplicate} 条重复。`;
+    el.wordFile.value = '';
+  } catch (e) {
+    showError('导入失败：' + e.message);
+    el.wordStatus.textContent = '';
+  } finally {
+    submitBtn.disabled = false;
+  }
+});
+
+function renderPendingSentences(rows) {
+  el.pendingSentencesList.innerHTML = '';
+  if (rows.length === 0) {
+    el.pendingSentencesList.innerHTML = '<div class="empty">这门语言目前没有待处理的句子。先导入句表 CSV，或者都已经三选一处理完了。</div>';
+    return;
+  }
+  for (const r of rows) {
+    const card = document.createElement('div');
+    card.className = 'sentence-card';
+    card.innerHTML = `
+      <div class="original">${r.sentence}</div>
+      <div class="translation">${r.translation}</div>
+      ${r.url ? `<a class="source-link" href="${r.url}" target="_blank" rel="noopener">回原视频重听 →</a>` : ''}
+      <div class="row choice-row">
+        <button type="button" data-choice="phonetic">语音</button>
+        <button type="button" data-choice="language">语言</button>
+        <button type="button" data-choice="skip">跳过</button>
+      </div>
+      <div class="row phonetic-input-row">
+        <input type="text" placeholder="哪个词/哪一小段没听清？" class="word-or-span-input">
+        <button type="button" class="confirm-phonetic-btn primary">确认</button>
+      </div>
+    `;
+
+    const phoneticBtn = card.querySelector('[data-choice="phonetic"]');
+    const languageBtn = card.querySelector('[data-choice="language"]');
+    const skipBtn = card.querySelector('[data-choice="skip"]');
+    const input = card.querySelector('.word-or-span-input');
+    const confirmBtn = card.querySelector('.confirm-phonetic-btn');
+
+    phoneticBtn.addEventListener('click', () => {
+      card.classList.add('phonetic-mode');
+      input.focus();
+    });
+    languageBtn.addEventListener('click', () => submitTriage(r.id, 'language', null, card));
+    skipBtn.addEventListener('click', () => submitTriage(r.id, 'skip', null, card));
+    confirmBtn.addEventListener('click', () => {
+      const wordOrSpan = input.value.trim();
+      if (!wordOrSpan) { input.focus(); return; }
+      submitTriage(r.id, 'phonetic', wordOrSpan, card);
+    });
+
+    el.pendingSentencesList.appendChild(card);
+  }
+}
+
+async function submitTriage(id, choice, wordOrSpan, card) {
+  clearError();
+  const buttons = card.querySelectorAll('button');
+  buttons.forEach((b) => b.disabled = true);
+  try {
+    const res = await fetch(`/mining/sentences/${id}/triage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ choice, word_or_span: wordOrSpan }),
+    });
+    if (!res.ok) throw new Error((await res.json()).detail || res.statusText);
+    card.classList.add('done');
+    buttons.forEach((b) => b.remove());
+  } catch (e) {
+    showError('提交失败：' + e.message);
+    buttons.forEach((b) => b.disabled = false);
+  }
+}
+
+async function loadPendingSentences() {
+  clearError();
+  try {
+    const res = await fetch(`/mining/sentences?language=${el.sentenceLanguage.value}&status=pending`);
+    if (!res.ok) throw new Error((await res.json()).detail || res.statusText);
+    renderPendingSentences(await res.json());
+  } catch (e) {
+    showError('加载待处理句子失败：' + e.message);
+  }
+}
+
+el.sentenceLanguage.addEventListener('change', loadPendingSentences);
+el.refreshSentencesBtn.addEventListener('click', loadPendingSentences);
+
+el.sentenceForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  clearError();
+  const file = el.sentenceFile.files[0];
+  if (!file) return;
+
+  const submitBtn = el.sentenceForm.querySelector('button[type="submit"]');
+  submitBtn.disabled = true;
+  el.sentenceImportStatus.textContent = '上传中…';
+
+  try {
+    const formData = new FormData();
+    formData.append('language', el.sentenceLanguage.value);
+    formData.append('file', file);
+
+    const res = await fetch('/mining/sentences/import', { method: 'POST', body: formData });
+    if (!res.ok) throw new Error((await res.json()).detail || res.statusText);
+    const data = await res.json();
+    el.sentenceImportStatus.textContent =
+      `共 ${data.total_rows} 行，新增 ${data.imported} 条待处理，跳过 ${data.skipped_duplicate} 条重复。`;
+    el.sentenceFile.value = '';
+    await loadPendingSentences();
+  } catch (e) {
+    showError('导入失败：' + e.message);
+    el.sentenceImportStatus.textContent = '';
+  } finally {
+    submitBtn.disabled = false;
+  }
+});
+
+el.processBtn.addEventListener('click', async () => {
+  clearError();
+  el.processBtn.disabled = true;
+  el.processStatus.textContent = '分诊中，可能要几秒到几十秒（一次性处理所有排队句子）…';
+  el.processResults.innerHTML = '';
+
+  try {
+    const res = await fetch('/mining/process', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ language: el.sentenceLanguage.value }),
+    });
+    if (!res.ok) throw new Error((await res.json()).detail || res.statusText);
+    const data = await res.json();
+    el.processStatus.textContent = `处理完成：${data.processed} 句成功，新增 ${data.words_added} 条生词、${data.collocations_added} 条语块。`;
+    if (data.failed_ids.length > 0) {
+      el.processResults.textContent = `${data.failed_ids.length} 句解析失败，保留在排队状态，可以再点一次重试。`;
+    }
+  } catch (e) {
+    showError('批量处理失败：' + e.message);
+    el.processStatus.textContent = '';
+  } finally {
+    el.processBtn.disabled = false;
+  }
+});
+
+loadPendingSentences();
+</script>
+</body>
+</html>

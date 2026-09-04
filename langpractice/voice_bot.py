@@ -46,6 +46,7 @@ from .induction import (
     apply_mastery_updates,
     format_induction_targets,
     retrieve_induction_targets,
+    retrieve_today_collocations,
     review_induction_usage,
 )
 from .llm.groq_client import GroqLLMClient
@@ -113,7 +114,11 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments) -> Non
         hostility_level = _resolve_hostility_level(card, runner_args)
         # 口语侧诱导（二期）：不限定场景，按语言检索旧表达，注入隐藏目标。没有历史记录时
         # targets 是空列表，render_persona_prompt 自然退化成一期行为（induction_block 留空）。
-        induction_targets = retrieve_induction_targets(startup_conn, card.language)
+        # 今日通道（模块 4）额外拼接在后面——当天精听提炼刚进库、mastery=0 的 collocation
+        # 高优先级注入当天这场对话，不占 retrieve_induction_targets 的常规配额。
+        induction_targets = retrieve_induction_targets(
+            startup_conn, card.language
+        ) + retrieve_today_collocations(startup_conn, card.language)
     finally:
         startup_conn.close()
 
